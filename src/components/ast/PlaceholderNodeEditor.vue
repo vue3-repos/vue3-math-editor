@@ -1,7 +1,16 @@
 <script setup lang="ts">
-const emit = defineEmits([
-  'update:modelValue'
-])
+import type { NodePath } from '../../types/editor'
+
+defineProps<{
+  path: NodePath
+}>()
+
+const emit = defineEmits<{
+  'update:modelValue': [
+    value: { type: 'Identifier'; name: string } | { type: 'Number'; value: number },
+  ]
+  'focus-path': [path: NodePath]
+}>()
 
 function makeIdentifier() {
   emit('update:modelValue', {
@@ -19,15 +28,11 @@ function makeNumber() {
 </script>
 
 <template>
-  <div class="placeholder">
+  <div class="placeholder" @click.stop="emit('focus-path', path)">
     □
 
-    <button @click="makeIdentifier">
-      Variable
-    </button>
+    <button @click="makeIdentifier">Variable</button>
 
-    <button @click="makeNumber">
-      Number
-    </button>
+    <button @click="makeNumber">Number</button>
   </div>
 </template>

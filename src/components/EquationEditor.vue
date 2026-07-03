@@ -2,14 +2,18 @@
 import { computed } from 'vue'
 
 import AstNodeEditor from './ast/AstNodeEditor.vue'
+import type { AstNode } from '../types/ast'
+import type { NodePath } from '../types/editor'
 
 const props = defineProps<{
-  modelValue: any
+  modelValue: AstNode
+  focusedPath: NodePath | null
 }>()
 
-const emit = defineEmits([
-  'update:modelValue'
-])
+const emit = defineEmits<{
+  'update:modelValue': [value: AstNode]
+  'focus-path': [path: NodePath]
+}>()
 
 const ast = computed({
   get: () => props.modelValue,
@@ -21,6 +25,9 @@ const ast = computed({
   <div>
     <AstNodeEditor
       v-model="ast"
+      :path="[]"
+      :focused-path="focusedPath"
+      @focus-path="emit('focus-path', $event)"
     />
   </div>
 </template>

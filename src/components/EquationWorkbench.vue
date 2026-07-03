@@ -7,56 +7,83 @@ import Tag from 'primevue/tag'
 
 import EquationEditor from './EquationEditor.vue'
 
+import {
+  collapseSelection,
+  insertDerivativeAtPath,
+  insertFractionAtPath,
+  insertPowerAtPath,
+  resolveCommandPath,
+  unwrapNodeAtPath,
+} from '../editor/commands'
 import { astToLatex } from '../renderers/latex'
 import { astToContentMathML } from '../renderers/mathml'
 import type { AstNode } from '../types/ast'
+import type { EditorState, NodePath } from '../types/editor'
 
-const ast = ref<AstNode>({
-  type: 'Identifier',
-  name: 'x',
+const editorState = ref<EditorState>({
+  ast: {
+    type: 'Identifier',
+    name: 'x',
+  },
+  focusedPath: [],
+  selection: {
+    anchor: [],
+    focus: [],
+  },
+  mode: 'insert',
 })
 
 function insertFraction() {
-  ast.value = {
-    type: 'Divide',
-    numerator: {
-      type: 'Identifier',
-      name: 'a',
-    },
-    denominator: {
-      type: 'Identifier',
-      name: 'b',
-    },
-  }
+  const path = resolveCommandPath(editorState.value.focusedPath)
+  const result = insertFractionAtPath(editorState.value.ast, path)
+  editorState.value.ast = result.ast
+  editorState.value.focusedPath = result.focusedPath
+  editorState.value.selection = collapseSelection(result.focusedPath)
 }
 
 function insertPower() {
-  ast.value = {
-    type: 'Power',
-    base: {
-      type: 'Identifier',
-      name: 'x',
-    },
-    exponent: {
-      type: 'Number',
-      value: 2,
-    },
-  }
+  const path = resolveCommandPath(editorState.value.focusedPath)
+  const result = insertPowerAtPath(editorState.value.ast, path)
+  editorState.value.ast = result.ast
+  editorState.value.focusedPath = result.focusedPath
+  editorState.value.selection = collapseSelection(result.focusedPath)
 }
 
 function insertDerivative() {
-  ast.value = {
-    type: 'Derivative',
-    expression: {
-      type: 'Identifier',
-      name: 'y',
-    },
-    variable: 'x',
-  }
+  const path = resolveCommandPath(editorState.value.focusedPath)
+  const result = insertDerivativeAtPath(editorState.value.ast, path)
+  editorState.value.ast = result.ast
+  editorState.value.focusedPath = result.focusedPath
+  editorState.value.selection = collapseSelection(result.focusedPath)
 }
 
-const latex = computed(() => astToLatex(ast.value))
-const mathml = computed(() => astToContentMathML(ast.value).trim())
+function unwrapFocusedNode() {
+  const path = resolveCommandPath(editorState.value.focusedPath)
+  const result = unwrapNodeAtPath(editorState.value.ast, path)
+  editorState.value.ast = result.ast
+  editorState.value.focusedPath = result.focusedPath
+  editorState.value.selection = collapseSelection(result.focusedPath)
+}
+
+function updateFocusedPath(path: NodePath) {
+  editorState.value.focusedPath = path
+  editorState.value.selection = collapseSelection(path)
+}
+
+const ast = computed<AstNode>({
+  get: () => editorState.value.ast,
+  set: (value) => {
+    editorState.value.ast = value
+  },
+})
+
+const latex = computed(() => astToLatex(editorState.value.ast))
+const mathml = computed(() => astToContentMathML(editorState.value.ast).trim())
+const focusedPathLabel = computed(() =>
+  editorState.value.focusedPath && editorState.value.focusedPath.length > 0
+    ? editorState.value.focusedPath.join(' > ')
+    : 'root',
+)
 </script>
 
 <template>
@@ -90,12 +117,20 @@ const mathml = computed(() => astToContentMathML(ast.value).trim())
             severity="contrast"
             @click="insertDerivative"
           />
+          <Button icon="pi pi-undo" label="Unwrap" size="small" text @click="unwrapFocusedNode" />
         </div>
+
+        <p class="focus-meta">
+          Focused path: {{ focusedPathLabel }} | Mode: {{ editorState.mode }}
+        </p>
 
         <Divider />
 
-        <EquationEditor v-model="ast" />
-        
+        <EquationEditor
+          v-model="ast"
+          :focused-path="editorState.focusedPath"
+          @focus-path="updateFocusedPath"
+        />
       </template>
     </Card>
 
@@ -104,7 +139,7 @@ const mathml = computed(() => astToContentMathML(ast.value).trim())
         <div id="ast-preview-title">AST Preview</div>
       </template>
       <template #content>
-        <pre>{{ JSON.stringify(ast, null, 2) }}</pre>
+        <pre>{{ JSON.stringify(editorState.ast, null, 2) }}</pre>
       </template>
     </Card>
 
@@ -153,6 +188,12 @@ const mathml = computed(() => astToContentMathML(ast.value).trim())
   display: flex;
   flex-wrap: wrap;
   gap: 0.6rem;
+}
+
+.focus-meta {
+  margin: 0.75rem 0 0;
+  color: #475569;
+  font-size: 0.85rem;
 }
 
 .math-field-wrap {

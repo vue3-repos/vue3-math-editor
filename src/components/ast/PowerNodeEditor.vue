@@ -1,21 +1,29 @@
 <script setup lang="ts">
 import AstNodeEditor from './AstNodeEditor.vue'
+import type { PowerNode } from '../../types/ast'
+import type { NodePath } from '../../types/editor'
 
-const props = defineProps<{
-  modelValue: any
+defineProps<{
+  modelValue: PowerNode
+  path: NodePath
+  focusedPath: NodePath | null
 }>()
 
-const emit = defineEmits([
-  'update:modelValue'
-])
+const emit = defineEmits<{
+  'update:modelValue': [value: PowerNode]
+  'focus-path': [path: NodePath]
+}>()
 </script>
 
 <template>
   <div>
     <AstNodeEditor
       :model-value="modelValue.base"
+      :path="[...path, 'base']"
+      :focused-path="focusedPath"
+      @focus-path="emit('focus-path', $event)"
       @update:model-value="
-        base =>
+        (base) =>
           emit('update:modelValue', {
             ...modelValue,
             base,
@@ -26,8 +34,11 @@ const emit = defineEmits([
     <sup>
       <AstNodeEditor
         :model-value="modelValue.exponent"
+        :path="[...path, 'exponent']"
+        :focused-path="focusedPath"
+        @focus-path="emit('focus-path', $event)"
         @update:model-value="
-          exponent =>
+          (exponent) =>
             emit('update:modelValue', {
               ...modelValue,
               exponent,

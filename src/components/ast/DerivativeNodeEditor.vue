@@ -1,13 +1,24 @@
 <script setup lang="ts">
 import AstNodeEditor from './AstNodeEditor.vue'
+import type { DerivativeNode } from '../../types/ast'
+import type { NodePath } from '../../types/editor'
 
-const props = defineProps<{
-  modelValue: any
+defineProps<{
+  modelValue: DerivativeNode
+  path: NodePath
+  focusedPath: NodePath | null
 }>()
 
-const emit = defineEmits([
-  'update:modelValue'
-])
+const emit = defineEmits<{
+  'update:modelValue': [value: DerivativeNode]
+  'focus-path': [path: NodePath]
+}>()
+</script>
+
+<script lang="ts">
+function getInputValue(event: Event): string {
+  return (event.target as HTMLInputElement).value
+}
 </script>
 
 <template>
@@ -16,8 +27,11 @@ const emit = defineEmits([
       d(
       <AstNodeEditor
         :model-value="modelValue.expression"
+        :path="[...path, 'expression']"
+        :focused-path="focusedPath"
+        @focus-path="emit('focus-path', $event)"
         @update:model-value="
-          expression =>
+          (expression) =>
             emit('update:modelValue', {
               ...modelValue,
               expression,
@@ -32,10 +46,11 @@ const emit = defineEmits([
 
       <input
         :value="modelValue.variable"
+        @focus="emit('focus-path', path)"
         @input="
           emit('update:modelValue', {
             ...modelValue,
-            variable: $event.target.value,
+            variable: getInputValue($event),
           })
         "
       />

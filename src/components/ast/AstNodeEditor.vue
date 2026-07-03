@@ -5,50 +5,101 @@ import DivideNodeEditor from './DivideNodeEditor.vue'
 import PowerNodeEditor from './PowerNodeEditor.vue'
 import DerivativeNodeEditor from './DerivativeNodeEditor.vue'
 import PlaceholderNodeEditor from './PlaceholderNodeEditor.vue'
+import type { AstNode } from '../../types/ast'
+import type { NodePath } from '../../types/editor'
 
-defineProps<{
-  modelValue: any
+const props = defineProps<{
+  modelValue: AstNode
+  path: NodePath
+  focusedPath: NodePath | null
 }>()
 
-defineEmits<{
-  'update:modelValue': [value: any]
+const emit = defineEmits<{
+  'update:modelValue': [value: AstNode]
+  'focus-path': [path: NodePath]
 }>()
+
+function isSamePath(a: NodePath, b: NodePath | null): boolean {
+  if (!b || a.length !== b.length) {
+    return false
+  }
+
+  return a.every((segment, index) => segment === b[index])
+}
+
+function focusCurrentNode() {
+  emit('focus-path', props.path)
+}
 </script>
 
 <template>
-  <IdentifierNodeEditor
-    v-if="modelValue.type === 'Identifier'"
-    :model-value="modelValue"
-    @update:model-value="$emit('update:modelValue', $event)"
-  />
+  <div
+    class="node-shell"
+    :class="{ focused: isSamePath(path, focusedPath) }"
+    @click.stop="focusCurrentNode"
+  >
+    <IdentifierNodeEditor
+      v-if="modelValue.type === 'Identifier'"
+      :model-value="modelValue"
+      :path="path"
+      @focus-path="emit('focus-path', $event)"
+      @update:model-value="emit('update:modelValue', $event)"
+    />
 
-  <NumberNodeEditor
-    v-else-if="modelValue.type === 'Number'"
-    :model-value="modelValue"
-    @update:model-value="$emit('update:modelValue', $event)"
-  />
+    <NumberNodeEditor
+      v-else-if="modelValue.type === 'Number'"
+      :model-value="modelValue"
+      :path="path"
+      @focus-path="emit('focus-path', $event)"
+      @update:model-value="emit('update:modelValue', $event)"
+    />
 
-  <DivideNodeEditor
-    v-else-if="modelValue.type === 'Divide'"
-    :model-value="modelValue"
-    @update:model-value="$emit('update:modelValue', $event)"
-  />
+    <DivideNodeEditor
+      v-else-if="modelValue.type === 'Divide'"
+      :model-value="modelValue"
+      :path="path"
+      :focused-path="focusedPath"
+      @focus-path="emit('focus-path', $event)"
+      @update:model-value="emit('update:modelValue', $event)"
+    />
 
-  <PowerNodeEditor
-    v-else-if="modelValue.type === 'Power'"
-    :model-value="modelValue"
-    @update:model-value="$emit('update:modelValue', $event)"
-  />
+    <PowerNodeEditor
+      v-else-if="modelValue.type === 'Power'"
+      :model-value="modelValue"
+      :path="path"
+      :focused-path="focusedPath"
+      @focus-path="emit('focus-path', $event)"
+      @update:model-value="emit('update:modelValue', $event)"
+    />
 
-  <DerivativeNodeEditor
-    v-else-if="modelValue.type === 'Derivative'"
-    :model-value="modelValue"
-    @update:model-value="$emit('update:modelValue', $event)"
-  />
+    <DerivativeNodeEditor
+      v-else-if="modelValue.type === 'Derivative'"
+      :model-value="modelValue"
+      :path="path"
+      :focused-path="focusedPath"
+      @focus-path="emit('focus-path', $event)"
+      @update:model-value="emit('update:modelValue', $event)"
+    />
 
-  <PlaceholderNodeEditor
-    v-else
-    :model-value="modelValue"
-    @update:model-value="$emit('update:modelValue', $event)"
-  />
+    <PlaceholderNodeEditor
+      v-else
+      :model-value="modelValue"
+      :path="path"
+      @focus-path="emit('focus-path', $event)"
+      @update:model-value="emit('update:modelValue', $event)"
+    />
+  </div>
 </template>
+
+<style scoped>
+.node-shell {
+  border: 1px dashed transparent;
+  border-radius: 0.35rem;
+  padding: 0.1rem;
+}
+
+.node-shell.focused {
+  border-color: #22c55e;
+  background: #f0fdf4;
+}
+</style>
