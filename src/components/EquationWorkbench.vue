@@ -31,8 +31,7 @@ import type { EditorState, NodePath } from '../types/editor'
 
 const editorState = ref<EditorState>({
   ast: {
-    type: 'Identifier',
-    name: 'x',
+    type: 'Placeholder',
   },
   focusedPath: [],
   selection: {
