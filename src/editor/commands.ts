@@ -14,12 +14,24 @@ function clonePath(path: NodePath): NodePath {
   return [...path]
 }
 
+function samePath(a: NodePath, b: NodePath): boolean {
+  if (a.length !== b.length) {
+    return false
+  }
+
+  return a.every((part, index) => part === b[index])
+}
+
 function getChildNode(node: AstNode, key: NodeChildKey): AstNode | null {
   switch (key) {
     case 'left':
-      return node.type === 'Add' || node.type === 'Multiply' ? node.left : null
+      return node.type === 'Add' || node.type === 'Multiply' || node.type === 'Equal'
+        ? node.left
+        : null
     case 'right':
-      return node.type === 'Add' || node.type === 'Multiply' ? node.right : null
+      return node.type === 'Add' || node.type === 'Multiply' || node.type === 'Equal'
+        ? node.right
+        : null
     case 'numerator':
       return node.type === 'Divide' ? node.numerator : null
     case 'denominator':
@@ -35,12 +47,33 @@ function getChildNode(node: AstNode, key: NodeChildKey): AstNode | null {
   }
 }
 
+function childKeysForNode(node: AstNode): NodeChildKey[] {
+  switch (node.type) {
+    case 'Add':
+    case 'Multiply':
+    case 'Equal':
+      return ['left', 'right']
+    case 'Divide':
+      return ['numerator', 'denominator']
+    case 'Power':
+      return ['base', 'exponent']
+    case 'Derivative':
+      return ['expression']
+    default:
+      return []
+  }
+}
+
 function setChildNode(node: AstNode, key: NodeChildKey, child: AstNode): AstNode {
   switch (key) {
     case 'left':
-      return node.type === 'Add' || node.type === 'Multiply' ? { ...node, left: child } : node
+      return node.type === 'Add' || node.type === 'Multiply' || node.type === 'Equal'
+        ? { ...node, left: child }
+        : node
     case 'right':
-      return node.type === 'Add' || node.type === 'Multiply' ? { ...node, right: child } : node
+      return node.type === 'Add' || node.type === 'Multiply' || node.type === 'Equal'
+        ? { ...node, right: child }
+        : node
     case 'numerator':
       return node.type === 'Divide' ? { ...node, numerator: child } : node
     case 'denominator':
@@ -187,6 +220,45 @@ export function insertDerivativeAtPath(root: AstNode, path: NodePath): CommandRe
   }
 }
 
+export function insertAddAtPath(root: AstNode, path: NodePath): CommandResult {
+  const ast = updateNodeAtPath(root, path, (target) => ({
+    type: 'Add',
+    left: target,
+    right: makePlaceholder(),
+  }))
+
+  return {
+    ast,
+    focusedPath: [...path, 'right'],
+  }
+}
+
+export function insertMultiplyAtPath(root: AstNode, path: NodePath): CommandResult {
+  const ast = updateNodeAtPath(root, path, (target) => ({
+    type: 'Multiply',
+    left: target,
+    right: makePlaceholder(),
+  }))
+
+  return {
+    ast,
+    focusedPath: [...path, 'right'],
+  }
+}
+
+export function insertEqualAtPath(root: AstNode, path: NodePath): CommandResult {
+  const ast = updateNodeAtPath(root, path, (target) => ({
+    type: 'Equal',
+    left: target,
+    right: makePlaceholder(),
+  }))
+
+  return {
+    ast,
+    focusedPath: [...path, 'right'],
+  }
+}
+
 export function replaceFocusedNode(
   root: AstNode,
   path: NodePath,
@@ -221,4 +293,74 @@ export function fallbackFocusAfterDelete(path: NodePath): NodePath {
   }
 
   return parentPath(path)
+}
+
+function collectPlaceholderPathsRecursive(node: AstNode, path: NodePath, output: NodePath[]): void {
+  if (node.type === 'Placeholder') {
+    output.push(clonePath(path))
+    return
+  }
+
+  const childKeys = childKeysForNode(node)
+
+  for (const key of childKeys) {
+    const child = getChildNode(node, key)
+
+    if (child) {
+      collectPlaceholderPathsRecursive(child, [...path, key], output)
+    }
+  }
+}
+
+export function getPlaceholderPaths(root: AstNode): NodePath[] {
+  const paths: NodePath[] = []
+  collectPlaceholderPathsRecursive(root, [], paths)
+  return paths
+}
+
+export function getNextPlaceholderPath(
+  root: AstNode,
+  focusedPath: NodePath | null,
+  direction: 'forward' | 'backward',
+): NodePath | null {
+  const slots = getPlaceholderPaths(root)
+
+  if (slots.length === 0) {
+    return null
+  }
+
+  if (!focusedPath) {
+    return clonePath(slots[0])
+  }
+
+  const exactIndex = slots.findIndex((path) => samePath(path, focusedPath))
+
+  if (exactIndex >= 0) {
+    const delta = direction === 'forward' ? 1 : -1
+    const nextIndex = (exactIndex + delta + slots.length) % slots.length
+    return clonePath(slots[nextIndex])
+  }
+
+  if (direction === 'forward') {
+    return clonePath(slots[0])
+  }
+
+  return clonePath(slots[slots.length - 1])
+}
+
+export function isPlaceholderAtPath(root: AstNode, path: NodePath | null): boolean {
+  if (!path) {
+    return false
+  }
+
+  return getNodeAtPath(root, path).type === 'Placeholder'
+}
+
+export function replaceNodeWithPlaceholder(root: AstNode, path: NodePath): CommandResult {
+  const ast = replaceNodeAtPath(root, path, makePlaceholder())
+
+  return {
+    ast,
+    focusedPath: clonePath(path),
+  }
 }

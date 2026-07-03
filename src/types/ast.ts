@@ -3,6 +3,7 @@ export type AstNode =
   | IdentifierNode
   | AddNode
   | MultiplyNode
+  | EqualNode
   | DivideNode
   | PowerNode
   | DerivativeNode
@@ -30,6 +31,12 @@ export interface AddNode {
 
 export interface MultiplyNode {
   type: 'Multiply'
+  left: AstNode
+  right: AstNode
+}
+
+export interface EqualNode {
+  type: 'Equal'
   left: AstNode
   right: AstNode
 }

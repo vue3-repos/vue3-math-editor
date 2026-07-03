@@ -39,6 +39,15 @@ export function astToContentMathML(node: AstNode): string {
         </apply>
       `
 
+    case 'Equal':
+      return `
+        <apply>
+          <eq/>
+          ${astToContentMathML(node.left)}
+          ${astToContentMathML(node.right)}
+        </apply>
+      `
+
     case 'Power':
       return `
         <apply>
@@ -61,7 +70,7 @@ export function astToContentMathML(node: AstNode): string {
 
     case 'Placeholder':
       return `<ci>_</ci>`
-      
+
     default:
       return assertNever(node)
   }

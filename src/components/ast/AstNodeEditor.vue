@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import IdentifierNodeEditor from './IdentifierNodeEditor.vue'
 import NumberNodeEditor from './NumberNodeEditor.vue'
+import AddNodeEditor from './AddNodeEditor.vue'
+import MultiplyNodeEditor from './MultiplyNodeEditor.vue'
+import EqualNodeEditor from './EqualNodeEditor.vue'
 import DivideNodeEditor from './DivideNodeEditor.vue'
 import PowerNodeEditor from './PowerNodeEditor.vue'
 import DerivativeNodeEditor from './DerivativeNodeEditor.vue'
@@ -54,6 +57,33 @@ function focusCurrentNode() {
       @update:model-value="emit('update:modelValue', $event)"
     />
 
+    <AddNodeEditor
+      v-else-if="modelValue.type === 'Add'"
+      :model-value="modelValue"
+      :path="path"
+      :focused-path="focusedPath"
+      @focus-path="emit('focus-path', $event)"
+      @update:model-value="emit('update:modelValue', $event)"
+    />
+
+    <MultiplyNodeEditor
+      v-else-if="modelValue.type === 'Multiply'"
+      :model-value="modelValue"
+      :path="path"
+      :focused-path="focusedPath"
+      @focus-path="emit('focus-path', $event)"
+      @update:model-value="emit('update:modelValue', $event)"
+    />
+
+    <EqualNodeEditor
+      v-else-if="modelValue.type === 'Equal'"
+      :model-value="modelValue"
+      :path="path"
+      :focused-path="focusedPath"
+      @focus-path="emit('focus-path', $event)"
+      @update:model-value="emit('update:modelValue', $event)"
+    />
+
     <DivideNodeEditor
       v-else-if="modelValue.type === 'Divide'"
       :model-value="modelValue"
@@ -85,6 +115,7 @@ function focusCurrentNode() {
       v-else
       :model-value="modelValue"
       :path="path"
+      :is-focused="isSamePath(path, focusedPath)"
       @focus-path="emit('focus-path', $event)"
       @update:model-value="emit('update:modelValue', $event)"
     />

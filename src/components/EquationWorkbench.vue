@@ -9,9 +9,18 @@ import EquationEditor from './EquationEditor.vue'
 
 import {
   collapseSelection,
+  fallbackFocusAfterDelete,
+  getNodeAtPath,
+  getNextPlaceholderPath,
+  insertAddAtPath,
   insertDerivativeAtPath,
+  insertEqualAtPath,
   insertFractionAtPath,
+  insertMultiplyAtPath,
   insertPowerAtPath,
+  isPlaceholderAtPath,
+  replaceFocusedNode,
+  replaceNodeWithPlaceholder,
   resolveCommandPath,
   unwrapNodeAtPath,
 } from '../editor/commands'
@@ -33,41 +42,227 @@ const editorState = ref<EditorState>({
   mode: 'insert',
 })
 
-function insertFraction() {
-  const path = resolveCommandPath(editorState.value.focusedPath)
-  const result = insertFractionAtPath(editorState.value.ast, path)
+const editorSurface = ref<HTMLElement | null>(null)
+
+function applyCommandResult(result: { ast: AstNode; focusedPath: NodePath }) {
   editorState.value.ast = result.ast
   editorState.value.focusedPath = result.focusedPath
   editorState.value.selection = collapseSelection(result.focusedPath)
+}
+
+function insertFraction() {
+  const path = resolveCommandPath(editorState.value.focusedPath)
+  const result = insertFractionAtPath(editorState.value.ast, path)
+  applyCommandResult(result)
+}
+
+function insertAdd() {
+  const path = resolveCommandPath(editorState.value.focusedPath)
+  const result = insertAddAtPath(editorState.value.ast, path)
+  applyCommandResult(result)
+}
+
+function insertMultiply() {
+  const path = resolveCommandPath(editorState.value.focusedPath)
+  const result = insertMultiplyAtPath(editorState.value.ast, path)
+  applyCommandResult(result)
+}
+
+function insertEqual() {
+  const path = resolveCommandPath(editorState.value.focusedPath)
+  const result = insertEqualAtPath(editorState.value.ast, path)
+  applyCommandResult(result)
 }
 
 function insertPower() {
   const path = resolveCommandPath(editorState.value.focusedPath)
   const result = insertPowerAtPath(editorState.value.ast, path)
-  editorState.value.ast = result.ast
-  editorState.value.focusedPath = result.focusedPath
-  editorState.value.selection = collapseSelection(result.focusedPath)
+  applyCommandResult(result)
 }
 
 function insertDerivative() {
   const path = resolveCommandPath(editorState.value.focusedPath)
   const result = insertDerivativeAtPath(editorState.value.ast, path)
-  editorState.value.ast = result.ast
-  editorState.value.focusedPath = result.focusedPath
-  editorState.value.selection = collapseSelection(result.focusedPath)
+  applyCommandResult(result)
 }
 
 function unwrapFocusedNode() {
   const path = resolveCommandPath(editorState.value.focusedPath)
   const result = unwrapNodeAtPath(editorState.value.ast, path)
-  editorState.value.ast = result.ast
-  editorState.value.focusedPath = result.focusedPath
-  editorState.value.selection = collapseSelection(result.focusedPath)
+  applyCommandResult(result)
 }
 
 function updateFocusedPath(path: NodePath) {
   editorState.value.focusedPath = path
   editorState.value.selection = collapseSelection(path)
+  editorSurface.value?.focus()
+}
+
+function replaceFocusedWithIdentifier(name: string) {
+  const path = resolveCommandPath(editorState.value.focusedPath)
+  const result = replaceFocusedNode(editorState.value.ast, path, { type: 'Identifier', name })
+  applyCommandResult(result)
+}
+
+function replaceFocusedWithNumber(value: number) {
+  const path = resolveCommandPath(editorState.value.focusedPath)
+  const result = replaceFocusedNode(editorState.value.ast, path, { type: 'Number', value })
+  applyCommandResult(result)
+}
+
+function typeCharacter(char: string) {
+  const path = resolveCommandPath(editorState.value.focusedPath)
+  const node = getNodeAtPath(editorState.value.ast, path)
+
+  if (node.type === 'Placeholder') {
+    if (/^[a-zA-Z]$/.test(char)) {
+      replaceFocusedWithIdentifier(char)
+      return
+    }
+
+    if (/^[0-9]$/.test(char)) {
+      replaceFocusedWithNumber(Number(char))
+      return
+    }
+  }
+
+  if (node.type === 'Identifier' && /^[a-zA-Z]$/.test(char)) {
+    const result = replaceFocusedNode(editorState.value.ast, path, {
+      ...node,
+      name: `${node.name}${char}`,
+    })
+    applyCommandResult(result)
+    return
+  }
+
+  if (node.type === 'Number' && /^[0-9]$/.test(char)) {
+    const result = replaceFocusedNode(editorState.value.ast, path, {
+      ...node,
+      value: Number(`${node.value}${char}`),
+    })
+    applyCommandResult(result)
+  }
+}
+
+function moveFocusToPlaceholder(direction: 'forward' | 'backward') {
+  const nextPath = getNextPlaceholderPath(
+    editorState.value.ast,
+    editorState.value.focusedPath,
+    direction,
+  )
+
+  if (!nextPath) {
+    return
+  }
+
+  updateFocusedPath(nextPath)
+}
+
+function isTypingTarget(event: KeyboardEvent): boolean {
+  const target = event.target as HTMLElement | null
+
+  if (!target) {
+    return false
+  }
+
+  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+    return true
+  }
+
+  return target.isContentEditable
+}
+
+function removeAtFocusedPath() {
+  const path = resolveCommandPath(editorState.value.focusedPath)
+
+  if (path.length === 0) {
+    return
+  }
+
+  if (isPlaceholderAtPath(editorState.value.ast, path)) {
+    const parent = fallbackFocusAfterDelete(path)
+    const unwrapped = unwrapNodeAtPath(editorState.value.ast, parent)
+    applyCommandResult(unwrapped)
+    return
+  }
+
+  const result = replaceNodeWithPlaceholder(editorState.value.ast, path)
+  applyCommandResult(result)
+}
+
+function handleEditorKeydown(event: KeyboardEvent) {
+  if (event.key === 'Tab') {
+    event.preventDefault()
+    moveFocusToPlaceholder(event.shiftKey ? 'backward' : 'forward')
+    return
+  }
+
+  if (isTypingTarget(event)) {
+    return
+  }
+
+  if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+    event.preventDefault()
+    moveFocusToPlaceholder('forward')
+    return
+  }
+
+  if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+    event.preventDefault()
+    moveFocusToPlaceholder('backward')
+    return
+  }
+
+  if (event.key === '/' && !event.metaKey && !event.ctrlKey) {
+    event.preventDefault()
+    insertFraction()
+    return
+  }
+
+  if (event.key === '+' && !event.metaKey && !event.ctrlKey) {
+    event.preventDefault()
+    insertAdd()
+    return
+  }
+
+  if (event.key === '*' && !event.metaKey && !event.ctrlKey) {
+    event.preventDefault()
+    insertMultiply()
+    return
+  }
+
+  if (event.key === '=' && !event.metaKey && !event.ctrlKey) {
+    event.preventDefault()
+    insertEqual()
+    return
+  }
+
+  if (event.key === '^' && !event.metaKey && !event.ctrlKey) {
+    event.preventDefault()
+    insertPower()
+    return
+  }
+
+  if (
+    (event.key === 'd' || event.key === 'D') &&
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !event.altKey
+  ) {
+    event.preventDefault()
+    insertDerivative()
+    return
+  }
+
+  if (event.key === 'Backspace' || event.key === 'Delete') {
+    event.preventDefault()
+    removeAtFocusedPath()
+    return
+  }
+
+  if (!event.metaKey && !event.ctrlKey && !event.altKey && event.key.length === 1) {
+    typeCharacter(event.key)
+  }
 }
 
 const ast = computed<AstNode>({
@@ -87,7 +282,12 @@ const focusedPathLabel = computed(() =>
 </script>
 
 <template>
-  <section class="editor-grid">
+  <section
+    ref="editorSurface"
+    class="editor-grid"
+    tabindex="0"
+    @keydown.capture="handleEditorKeydown"
+  >
     <Card class="editor-card">
       <template #title>
         <div class="header-row">
@@ -103,6 +303,15 @@ const focusedPathLabel = computed(() =>
       <template #content>
         <div class="toolbar">
           <Button icon="pi pi-slash" label="Fraction" size="small" @click="insertFraction" />
+          <Button icon="pi pi-plus" label="Add" size="small" outlined @click="insertAdd" />
+          <Button
+            icon="pi pi-times"
+            label="Multiply"
+            size="small"
+            outlined
+            @click="insertMultiply"
+          />
+          <Button icon="pi pi-equals" label="Equals" size="small" outlined @click="insertEqual" />
           <Button
             icon="pi pi-superscript"
             label="Power"
@@ -122,6 +331,11 @@ const focusedPathLabel = computed(() =>
 
         <p class="focus-meta">
           Focused path: {{ focusedPathLabel }} | Mode: {{ editorState.mode }}
+        </p>
+
+        <p class="key-hint">
+          Keyboard: Tab/arrows move slots, letters/numbers type into slot, / fraction, * multiply, +
+          add, = equals, ^ power, d derivative, Backspace/Delete remove.
         </p>
 
         <Divider />
@@ -171,6 +385,7 @@ const focusedPathLabel = computed(() =>
   gap: 1rem;
   grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
   align-items: start;
+  outline: none;
 }
 
 .editor-card {

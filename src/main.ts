@@ -1,4 +1,3 @@
-import 'mathlive'
 import 'primeicons/primeicons.css'
 
 import { createApp } from 'vue'

@@ -18,6 +18,9 @@ export function astToLatex(node: AstNode): string {
     case 'Multiply':
       return `${astToLatex(node.left)} ${astToLatex(node.right)}`
 
+    case 'Equal':
+      return `${astToLatex(node.left)} = ${astToLatex(node.right)}`
+
     case 'Divide':
       return `\\frac{${astToLatex(node.numerator)}}{${astToLatex(node.denominator)}}`
 
@@ -29,7 +32,7 @@ export function astToLatex(node: AstNode): string {
 
     case 'Placeholder':
       return '\\square'
-      
+
     default:
       return assertNever(node)
   }
