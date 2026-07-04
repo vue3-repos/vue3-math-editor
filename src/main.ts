@@ -1,4 +1,5 @@
 import 'primeicons/primeicons.css'
+import 'katex/dist/katex.min.css'
 
 import { createApp } from 'vue'
 import PrimeVue from 'primevue/config'
