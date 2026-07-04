@@ -30,9 +30,7 @@ import type { AstNode } from '../types/ast'
 import type { EditorState, NodePath } from '../types/editor'
 
 const editorState = ref<EditorState>({
-  ast: {
-    type: 'Placeholder',
-  },
+  ast: null,
   focusedPath: [],
   selection: {
     anchor: [],
@@ -49,43 +47,55 @@ function applyCommandResult(result: { ast: AstNode; focusedPath: NodePath }) {
   editorState.value.selection = collapseSelection(result.focusedPath)
 }
 
+function rootAstForCommand(): AstNode {
+  if (editorState.value.ast) {
+    return editorState.value.ast
+  }
+
+  return { type: 'Placeholder' }
+}
+
 function insertFraction() {
   const path = resolveCommandPath(editorState.value.focusedPath)
-  const result = insertFractionAtPath(editorState.value.ast, path)
+  const result = insertFractionAtPath(rootAstForCommand(), path)
   applyCommandResult(result)
 }
 
 function insertAdd() {
   const path = resolveCommandPath(editorState.value.focusedPath)
-  const result = insertAddAtPath(editorState.value.ast, path)
+  const result = insertAddAtPath(rootAstForCommand(), path)
   applyCommandResult(result)
 }
 
 function insertMultiply() {
   const path = resolveCommandPath(editorState.value.focusedPath)
-  const result = insertMultiplyAtPath(editorState.value.ast, path)
+  const result = insertMultiplyAtPath(rootAstForCommand(), path)
   applyCommandResult(result)
 }
 
 function insertEqual() {
   const path = resolveCommandPath(editorState.value.focusedPath)
-  const result = insertEqualAtPath(editorState.value.ast, path)
+  const result = insertEqualAtPath(rootAstForCommand(), path)
   applyCommandResult(result)
 }
 
 function insertPower() {
   const path = resolveCommandPath(editorState.value.focusedPath)
-  const result = insertPowerAtPath(editorState.value.ast, path)
+  const result = insertPowerAtPath(rootAstForCommand(), path)
   applyCommandResult(result)
 }
 
 function insertDerivative() {
   const path = resolveCommandPath(editorState.value.focusedPath)
-  const result = insertDerivativeAtPath(editorState.value.ast, path)
+  const result = insertDerivativeAtPath(rootAstForCommand(), path)
   applyCommandResult(result)
 }
 
 function unwrapFocusedNode() {
+  if (!editorState.value.ast) {
+    return
+  }
+
   const path = resolveCommandPath(editorState.value.focusedPath)
   const result = unwrapNodeAtPath(editorState.value.ast, path)
   applyCommandResult(result)
@@ -94,22 +104,59 @@ function unwrapFocusedNode() {
 function updateFocusedPath(path: NodePath) {
   editorState.value.focusedPath = path
   editorState.value.selection = collapseSelection(path)
-  editorSurface.value?.focus()
+
+  const activeElement = document.activeElement
+  const isTextInputTarget =
+    activeElement instanceof HTMLInputElement ||
+    activeElement instanceof HTMLTextAreaElement ||
+    activeElement?.hasAttribute('contenteditable')
+
+  if (!isTextInputTarget) {
+    editorSurface.value?.focus()
+  }
 }
 
 function replaceFocusedWithIdentifier(name: string) {
+  if (!editorState.value.ast) {
+    editorState.value.ast = { type: 'Identifier', name }
+    editorState.value.focusedPath = []
+    editorState.value.selection = collapseSelection([])
+    return
+  }
+
   const path = resolveCommandPath(editorState.value.focusedPath)
   const result = replaceFocusedNode(editorState.value.ast, path, { type: 'Identifier', name })
   applyCommandResult(result)
 }
 
 function replaceFocusedWithNumber(value: number) {
+  if (!editorState.value.ast) {
+    editorState.value.ast = { type: 'Number', value }
+    editorState.value.focusedPath = []
+    editorState.value.selection = collapseSelection([])
+    return
+  }
+
   const path = resolveCommandPath(editorState.value.focusedPath)
   const result = replaceFocusedNode(editorState.value.ast, path, { type: 'Number', value })
   applyCommandResult(result)
 }
 
 function typeCharacter(char: string) {
+  if (!editorState.value.ast) {
+    if (/^[a-zA-Z]$/.test(char)) {
+      replaceFocusedWithIdentifier(char)
+      return
+    }
+
+    if (/^[0-9]$/.test(char)) {
+      replaceFocusedWithNumber(Number(char))
+      return
+    }
+
+    return
+  }
+
   const path = resolveCommandPath(editorState.value.focusedPath)
   const node = getNodeAtPath(editorState.value.ast, path)
 
@@ -144,6 +191,10 @@ function typeCharacter(char: string) {
 }
 
 function moveFocusToPlaceholder(direction: 'forward' | 'backward') {
+  if (!editorState.value.ast) {
+    return
+  }
+
   const nextPath = getNextPlaceholderPath(
     editorState.value.ast,
     editorState.value.focusedPath,
@@ -172,9 +223,16 @@ function isTypingTarget(event: KeyboardEvent): boolean {
 }
 
 function removeAtFocusedPath() {
+  if (!editorState.value.ast) {
+    return
+  }
+
   const path = resolveCommandPath(editorState.value.focusedPath)
 
   if (path.length === 0) {
+    editorState.value.ast = null
+    editorState.value.focusedPath = []
+    editorState.value.selection = collapseSelection([])
     return
   }
 
@@ -264,15 +322,17 @@ function handleEditorKeydown(event: KeyboardEvent) {
   }
 }
 
-const ast = computed<AstNode>({
+const ast = computed<AstNode | null>({
   get: () => editorState.value.ast,
   set: (value) => {
     editorState.value.ast = value
   },
 })
 
-const latex = computed(() => astToLatex(editorState.value.ast))
-const mathml = computed(() => astToContentMathML(editorState.value.ast).trim())
+const latex = computed(() => (editorState.value.ast ? astToLatex(editorState.value.ast) : ''))
+const mathml = computed(() =>
+  editorState.value.ast ? astToContentMathML(editorState.value.ast).trim() : '',
+)
 const focusedPathLabel = computed(() =>
   editorState.value.focusedPath && editorState.value.focusedPath.length > 0
     ? editorState.value.focusedPath.join(' > ')

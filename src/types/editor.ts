@@ -17,7 +17,7 @@ export interface EditorSelection {
 }
 
 export interface EditorState {
-  ast: AstNode
+  ast: AstNode | null
   focusedPath: NodePath | null
   selection: EditorSelection | null
   mode: 'insert' | 'replace'
