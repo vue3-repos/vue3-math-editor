@@ -378,6 +378,19 @@ export function insertMultiplyAtPath(root: AstNode, path: NodePath): CommandResu
   }
 }
 
+export function insertSubtractAtPath(root: AstNode, path: NodePath): CommandResult {
+  const ast = updateNodeAtPath(root, path, (target) => ({
+    type: 'Subtract',
+    minuend: target,
+    subtrahend: makePlaceholder(),
+  }))
+
+  return {
+    ast,
+    focusedPath: [...path, 'subtrahend'],
+  }
+}
+
 export function insertEqualAtPath(root: AstNode, path: NodePath): CommandResult {
   const ast = updateNodeAtPath(root, path, (target) => ({
     type: 'Equal',

@@ -18,6 +18,7 @@ import {
   insertEqualAtPath,
   insertFractionAtPath,
   insertMultiplyAtPath,
+  insertSubtractAtPath,
   insertPowerAtPath,
   isPlaceholderAtPath,
   replaceFocusedNode,
@@ -26,6 +27,7 @@ import {
   unwrapNodeAtPath,
 } from '../editor/commands'
 import { astToLatex } from '../renderers/latex'
+import { renderMathJson } from '../renderers/mathjson'
 import { astToContentMathML } from '../renderers/mathml'
 import type { AstNode } from '../types/ast'
 import type { EditorState, NodePath } from '../types/editor'
@@ -85,6 +87,12 @@ function insertAdd() {
 function insertMultiply() {
   const path = resolveCommandPath(currentState().focusedPath)
   const result = insertMultiplyAtPath(rootAstForCommand(), path)
+  applyCommandResult(result)
+}
+
+function insertSubtract() {
+  const path = resolveCommandPath(currentState().focusedPath)
+  const result = insertSubtractAtPath(rootAstForCommand(), path)
   applyCommandResult(result)
 }
 
@@ -392,6 +400,12 @@ function handleEditorKeydown(event: KeyboardEvent) {
     return
   }
 
+  if (event.key === '-' && !event.metaKey && !event.ctrlKey) {
+    event.preventDefault()
+    insertSubtract()
+    return
+  }
+
   if (event.key === '*' && !event.metaKey && !event.ctrlKey) {
     event.preventDefault()
     insertMultiply()
@@ -463,6 +477,9 @@ function katexHtmlForAst(astNode: AstNode | null): string {
 
 const activeEquation = computed(() => currentState())
 const latex = computed(() => latexForAst(activeEquation.value.ast))
+const mathjson = computed(() =>
+  activeEquation.value.ast ? renderMathJson(activeEquation.value.ast) : '',
+)
 const mathml = computed(() =>
   activeEquation.value.ast ? astToContentMathML(activeEquation.value.ast).trim() : '',
 )
@@ -512,6 +529,13 @@ const focusedPathLabel = computed(() =>
           <Button icon="pi pi-slash" label="Fraction" size="small" @click="insertFraction" />
           <Button icon="pi pi-plus" label="Add" size="small" outlined @click="insertAdd" />
           <Button
+            icon="pi pi-minus"
+            label="Subtract"
+            size="small"
+            outlined
+            @click="insertSubtract"
+          />
+          <Button
             icon="pi pi-times"
             label="Multiply"
             size="small"
@@ -545,8 +569,8 @@ const focusedPathLabel = computed(() =>
 
         <p class="key-hint">
           Keyboard: Tab and Left/Right move slots, Up/Down move between equation rows,
-          letters/numbers type into slot, / fraction, * multiply, + add, = equals, ^ power, d
-          derivative, Backspace/Delete remove.
+          letters/numbers type into slot, / fraction, * multiply, + add, - subtract, = equals, ^
+          power, d derivative, Backspace/Delete remove.
         </p>
 
         <Divider />
@@ -589,6 +613,15 @@ const focusedPathLabel = computed(() =>
       </template>
       <template #content>
         <pre>{{ mathml }}</pre>
+      </template>
+    </Card>
+
+    <Card class="output-card" aria-labelledby="mathjson-preview-title">
+      <template #title>
+        <div id="mathjson-preview-title">MathJSON</div>
+      </template>
+      <template #content>
+        <pre>{{ mathjson }}</pre>
       </template>
     </Card>
 
