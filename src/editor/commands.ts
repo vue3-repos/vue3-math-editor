@@ -437,6 +437,16 @@ export function fallbackFocusAfterDelete(path: NodePath): NodePath {
     return []
   }
 
+  // Paths ending with a numeric segment point to an element inside an AST node array
+  // (e.g. [..., 'children', 1] or [..., 'args', 0]).
+  // The immediate parent ([..., 'children']) is a collection, not an AST node, so
+  // delete fallback must move focus to the owning node instead.
+  const last = path[path.length - 1]
+
+  if (typeof last === 'number') {
+    return path.slice(0, -2)
+  }
+
   return parentPath(path)
 }
 
