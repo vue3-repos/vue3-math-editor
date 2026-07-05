@@ -488,6 +488,50 @@ const focusedPathLabel = computed(() =>
     ? activeEquation.value.focusedPath.join(' > ')
     : 'root',
 )
+
+const isCopyingMathJson = ref(false)
+
+function fallbackCopyText(text: string): boolean {
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.setAttribute('readonly', 'true')
+  textarea.style.position = 'fixed'
+  textarea.style.opacity = '0'
+  document.body.appendChild(textarea)
+  textarea.select()
+
+  let copied = false
+
+  try {
+    copied = document.execCommand('copy')
+  } catch {
+    copied = false
+  }
+
+  document.body.removeChild(textarea)
+  return copied
+}
+
+async function copyMathJson() {
+  if (!mathjson.value) {
+    return
+  }
+
+  isCopyingMathJson.value = true
+
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(mathjson.value)
+      return
+    }
+
+    fallbackCopyText(mathjson.value)
+  } finally {
+    window.setTimeout(() => {
+      isCopyingMathJson.value = false
+    }, 1200)
+  }
+}
 </script>
 
 <template>
@@ -618,7 +662,17 @@ const focusedPathLabel = computed(() =>
 
     <Card class="output-card" aria-labelledby="mathjson-preview-title">
       <template #title>
-        <div id="mathjson-preview-title">MathJSON</div>
+        <div class="preview-title-row">
+          <div id="mathjson-preview-title">MathJSON</div>
+          <Button
+            icon="pi pi-copy"
+            :label="isCopyingMathJson ? 'Copied' : 'Copy MathJSON'"
+            size="small"
+            outlined
+            :disabled="!mathjson"
+            @click="copyMathJson"
+          />
+        </div>
       </template>
       <template #content>
         <pre>{{ mathjson }}</pre>
@@ -656,6 +710,13 @@ const focusedPathLabel = computed(() =>
   justify-content: space-between;
   align-items: center;
   gap: 0.5rem;
+}
+
+.preview-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
 }
 
 .toolbar {
