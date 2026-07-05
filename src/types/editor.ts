@@ -3,13 +3,22 @@ import type { AstNode } from './ast'
 export type NodeChildKey =
   | 'left'
   | 'right'
+  | 'children'
+  | 'args'
+  | 'minuend'
+  | 'subtrahend'
   | 'numerator'
   | 'denominator'
   | 'base'
   | 'exponent'
   | 'expression'
+  | 'value'
+  | 'radicand'
+  | 'degree'
 
-export type NodePath = NodeChildKey[]
+export type NodePathSegment = NodeChildKey | number
+
+export type NodePath = NodePathSegment[]
 
 export interface EditorSelection {
   anchor: NodePath

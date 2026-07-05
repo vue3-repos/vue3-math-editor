@@ -3,6 +3,11 @@ export type AstNode =
   | IdentifierNode
   | AddNode
   | MultiplyNode
+  | SubtractNode
+  | NegateNode
+  | AbsNode
+  | RootNode
+  | FunctionCallNode
   | EqualNode
   | DivideNode
   | PowerNode
@@ -25,14 +30,40 @@ export interface IdentifierNode {
 
 export interface AddNode {
   type: 'Add'
-  left: AstNode
-  right: AstNode
+  children: AstNode[]
 }
 
 export interface MultiplyNode {
   type: 'Multiply'
-  left: AstNode
-  right: AstNode
+  children: AstNode[]
+}
+
+export interface SubtractNode {
+  type: 'Subtract'
+  minuend: AstNode
+  subtrahend: AstNode
+}
+
+export interface NegateNode {
+  type: 'Negate'
+  value: AstNode
+}
+
+export interface AbsNode {
+  type: 'Abs'
+  value: AstNode
+}
+
+export interface RootNode {
+  type: 'Root'
+  radicand: AstNode
+  degree: AstNode | null
+}
+
+export interface FunctionCallNode {
+  type: 'FunctionCall'
+  name: string
+  args: AstNode[]
 }
 
 export interface EqualNode {

@@ -6,6 +6,11 @@ import IdentifierNodeEditor from './IdentifierNodeEditor.vue'
 import NumberNodeEditor from './NumberNodeEditor.vue'
 import AddNodeEditor from './AddNodeEditor.vue'
 import MultiplyNodeEditor from './MultiplyNodeEditor.vue'
+import SubtractNodeEditor from './SubtractNodeEditor.vue'
+import NegateNodeEditor from './NegateNodeEditor.vue'
+import AbsNodeEditor from './AbsNodeEditor.vue'
+import RootNodeEditor from './RootNodeEditor.vue'
+import FunctionCallNodeEditor from './FunctionCallNodeEditor.vue'
 import EqualNodeEditor from './EqualNodeEditor.vue'
 import DivideNodeEditor from './DivideNodeEditor.vue'
 import PowerNodeEditor from './PowerNodeEditor.vue'
@@ -107,6 +112,51 @@ const displayHtml = computed(() =>
 
       <MultiplyNodeEditor
         v-else-if="modelValue.type === 'Multiply'"
+        :model-value="modelValue"
+        :path="path"
+        :focused-path="focusedPath"
+        @focus-path="emit('focus-path', $event)"
+        @update:model-value="emit('update:modelValue', $event)"
+      />
+
+      <SubtractNodeEditor
+        v-else-if="modelValue.type === 'Subtract'"
+        :model-value="modelValue"
+        :path="path"
+        :focused-path="focusedPath"
+        @focus-path="emit('focus-path', $event)"
+        @update:model-value="emit('update:modelValue', $event)"
+      />
+
+      <NegateNodeEditor
+        v-else-if="modelValue.type === 'Negate'"
+        :model-value="modelValue"
+        :path="path"
+        :focused-path="focusedPath"
+        @focus-path="emit('focus-path', $event)"
+        @update:model-value="emit('update:modelValue', $event)"
+      />
+
+      <AbsNodeEditor
+        v-else-if="modelValue.type === 'Abs'"
+        :model-value="modelValue"
+        :path="path"
+        :focused-path="focusedPath"
+        @focus-path="emit('focus-path', $event)"
+        @update:model-value="emit('update:modelValue', $event)"
+      />
+
+      <RootNodeEditor
+        v-else-if="modelValue.type === 'Root'"
+        :model-value="modelValue"
+        :path="path"
+        :focused-path="focusedPath"
+        @focus-path="emit('focus-path', $event)"
+        @update:model-value="emit('update:modelValue', $event)"
+      />
+
+      <FunctionCallNodeEditor
+        v-else-if="modelValue.type === 'FunctionCall'"
         :model-value="modelValue"
         :path="path"
         :focused-path="focusedPath"

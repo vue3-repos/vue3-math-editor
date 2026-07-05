@@ -3,7 +3,7 @@ import AstNodeEditor from './AstNodeEditor.vue'
 import type { MultiplyNode } from '../../types/ast'
 import type { NodePath } from '../../types/editor'
 
-defineProps<{
+const props = defineProps<{
   modelValue: MultiplyNode
   path: NodePath
   focusedPath: NodePath | null
@@ -13,27 +13,30 @@ const emit = defineEmits<{
   'update:modelValue': [value: MultiplyNode]
   'focus-path': [path: NodePath]
 }>()
+
+function updateChild(index: number, child: MultiplyNode['children'][number]) {
+  const children = [...props.modelValue.children]
+  children[index] = child
+  emit('update:modelValue', {
+    ...props.modelValue,
+    children,
+  })
+}
 </script>
 
 <template>
   <div class="infix-row">
-    <AstNodeEditor
-      :model-value="modelValue.left"
-      :path="[...path, 'left']"
-      :focused-path="focusedPath"
-      @focus-path="emit('focus-path', $event)"
-      @update:model-value="(left) => emit('update:modelValue', { ...modelValue, left })"
-    />
+    <template v-for="(child, index) in modelValue.children" :key="index">
+      <span v-if="index > 0" class="operator">*</span>
 
-    <span class="operator">*</span>
-
-    <AstNodeEditor
-      :model-value="modelValue.right"
-      :path="[...path, 'right']"
-      :focused-path="focusedPath"
-      @focus-path="emit('focus-path', $event)"
-      @update:model-value="(right) => emit('update:modelValue', { ...modelValue, right })"
-    />
+      <AstNodeEditor
+        :model-value="child"
+        :path="[...path, 'children', index]"
+        :focused-path="focusedPath"
+        @focus-path="emit('focus-path', $event)"
+        @update:model-value="(nextChild) => updateChild(index, nextChild)"
+      />
+    </template>
   </div>
 </template>
 
