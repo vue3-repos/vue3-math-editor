@@ -52,6 +52,10 @@ export function astToMathJson(node: AstNode): MathJsonValue {
     case 'Abs':
       return ['Abs', astToMathJson(node.value)]
 
+    // Explicit brackets are purely presentational; export the content.
+    case 'Group':
+      return astToMathJson(node.value)
+
     case 'Root':
       return node.degree
         ? ['Root', astToMathJson(node.radicand), astToMathJson(node.degree)]
@@ -72,7 +76,7 @@ export function astToMathJson(node: AstNode): MathJsonValue {
       return ['Power', astToMathJson(node.base), astToMathJson(node.exponent)]
 
     case 'Derivative':
-      return ['Derivative', astToMathJson(node.expression), node.variable]
+      return ['Derivative', astToMathJson(node.expression), astToMathJson(node.variable)]
 
     case 'Placeholder':
       return ['Missing']

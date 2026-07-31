@@ -12,6 +12,7 @@ export type AstNode =
   | DivideNode
   | PowerNode
   | DerivativeNode
+  | GroupNode
   | PlaceholderNode
 
 export interface NumberNode {
@@ -84,8 +85,16 @@ export interface PowerNode {
   exponent: AstNode
 }
 
+// Explicit brackets entered by the user. Purely presentational grouping: the
+// semantic exporters (MathJSON, Content MathML) pass straight through to the
+// wrapped value.
+export interface GroupNode {
+  type: 'Group'
+  value: AstNode
+}
+
 export interface DerivativeNode {
   type: 'Derivative'
   expression: AstNode
-  variable: string
+  variable: AstNode
 }

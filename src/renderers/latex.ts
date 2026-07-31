@@ -42,6 +42,9 @@ export function astToLatex(node: AstNode): string {
     case 'Abs':
       return `\\left|${astToLatex(node.value)}\\right|`
 
+    case 'Group':
+      return `\\left(${astToLatex(node.value)}\\right)`
+
     case 'Root':
       return node.degree
         ? `\\sqrt[${astToLatex(node.degree)}]{${astToLatex(node.radicand)}}`
@@ -68,7 +71,7 @@ export function astToLatex(node: AstNode): string {
       return `${renderWrapped(node.base)}^{${astToLatex(node.exponent)}}`
 
     case 'Derivative':
-      return `\\frac{d(${astToLatex(node.expression)})}{d${node.variable}}`
+      return `\\frac{d(${astToLatex(node.expression)})}{d${astToLatex(node.variable)}}`
 
     case 'Placeholder':
       return '\\square'

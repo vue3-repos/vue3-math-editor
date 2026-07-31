@@ -12,6 +12,7 @@ export type NodeChildKey =
   | 'base'
   | 'exponent'
   | 'expression'
+  | 'variable'
   | 'value'
   | 'radicand'
   | 'degree'

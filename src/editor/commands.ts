@@ -6,6 +6,8 @@ export interface CommandResult {
   focusedPath: NodePath
 }
 
+export type NodeCommand = (root: AstNode, path: NodePath) => CommandResult
+
 function makePlaceholder(): PlaceholderNode {
   return { type: 'Placeholder' }
 }
@@ -24,7 +26,7 @@ function samePath(a: NodePath, b: NodePath): boolean {
 
 type PathContainer = AstNode | AstNode[]
 
-function getChildValue(node: AstNode, key: NodeChildKey): PathContainer | null {
+export function getChildValue(node: AstNode, key: NodeChildKey): PathContainer | null {
   switch (key) {
     case 'left':
       return node.type === 'Equal' ? node.left : null
@@ -48,8 +50,12 @@ function getChildValue(node: AstNode, key: NodeChildKey): PathContainer | null {
       return node.type === 'Power' ? node.exponent : null
     case 'expression':
       return node.type === 'Derivative' ? node.expression : null
+    case 'variable':
+      return node.type === 'Derivative' ? node.variable : null
     case 'value':
-      return node.type === 'Negate' || node.type === 'Abs' ? node.value : null
+      return node.type === 'Negate' || node.type === 'Abs' || node.type === 'Group'
+        ? node.value
+        : null
     case 'radicand':
       return node.type === 'Root' ? node.radicand : null
     case 'degree':
@@ -59,7 +65,7 @@ function getChildValue(node: AstNode, key: NodeChildKey): PathContainer | null {
   }
 }
 
-function childKeysForNode(node: AstNode): NodeChildKey[] {
+export function childKeysForNode(node: AstNode): NodeChildKey[] {
   switch (node.type) {
     case 'Add':
     case 'Multiply':
@@ -74,13 +80,16 @@ function childKeysForNode(node: AstNode): NodeChildKey[] {
       return ['numerator', 'denominator']
     case 'Power':
       return ['base', 'exponent']
+    // Two-key nodes are listed in entry order so placeholder cycling and
+    // caret navigation match how the user fills them in.
     case 'Derivative':
-      return ['expression']
+      return ['expression', 'variable']
     case 'Negate':
     case 'Abs':
+    case 'Group':
       return ['value']
     case 'Root':
-      return ['radicand', 'degree']
+      return ['degree', 'radicand']
     default:
       return []
   }
@@ -118,8 +127,13 @@ function setChildValue(node: AstNode, key: NodeChildKey, child: PathContainer): 
       return node.type === 'Derivative' && !Array.isArray(child)
         ? { ...node, expression: child }
         : node
+    case 'variable':
+      return node.type === 'Derivative' && !Array.isArray(child)
+        ? { ...node, variable: child }
+        : node
     case 'value':
-      return (node.type === 'Negate' || node.type === 'Abs') && !Array.isArray(child)
+      return (node.type === 'Negate' || node.type === 'Abs' || node.type === 'Group') &&
+        !Array.isArray(child)
         ? { ...node, value: child }
         : node
     case 'radicand':
@@ -211,7 +225,7 @@ function replaceValueAtPath(
   return setChildValue(root, head, replaceValueAtPath(currentChild, tail, nextValue))
 }
 
-function firstChildPath(node: AstNode): NodePath | null {
+export function firstChildPath(node: AstNode): NodePath | null {
   switch (node.type) {
     case 'Add':
     case 'Multiply':
@@ -228,6 +242,7 @@ function firstChildPath(node: AstNode): NodePath | null {
       return ['expression']
     case 'Negate':
     case 'Abs':
+    case 'Group':
       return ['value']
     case 'Root':
       return ['radicand']
@@ -322,15 +337,19 @@ export function insertPowerAtPath(root: AstNode, path: NodePath): CommandResult 
 }
 
 export function insertDerivativeAtPath(root: AstNode, path: NodePath): CommandResult {
+  const wasPlaceholder = getNodeAtPath(root, path).type === 'Placeholder'
+
   const ast = updateNodeAtPath(root, path, (target) => ({
     type: 'Derivative',
     expression: target,
-    variable: 'x',
+    variable: makePlaceholder(),
   }))
 
+  // Fill the numerator first; when wrapping existing content the numerator is
+  // already filled, so move straight to the variable slot.
   return {
     ast,
-    focusedPath: [...path, 'expression'],
+    focusedPath: wasPlaceholder ? [...path, 'expression'] : [...path, 'variable'],
   }
 }
 
@@ -524,5 +543,189 @@ export function replaceNodeWithPlaceholder(root: AstNode, path: NodePath): Comma
   return {
     ast,
     focusedPath: clonePath(path),
+  }
+}
+
+export function insertGroupAtPath(root: AstNode, path: NodePath): CommandResult {
+  const wasPlaceholder = getNodeAtPath(root, path).type === 'Placeholder'
+
+  const ast = updateNodeAtPath(root, path, (target) => ({
+    type: 'Group',
+    value: target,
+  }))
+
+  return {
+    ast,
+    focusedPath: wasPlaceholder ? [...path, 'value'] : clonePath(path),
+  }
+}
+
+export function insertNegateAtPath(root: AstNode, path: NodePath): CommandResult {
+  const ast = updateNodeAtPath(root, path, (target) => ({
+    type: 'Negate',
+    value: target,
+  }))
+
+  return {
+    ast,
+    focusedPath: [...path, 'value'],
+  }
+}
+
+export function insertAbsAtPath(root: AstNode, path: NodePath): CommandResult {
+  const ast = updateNodeAtPath(root, path, (target) => ({
+    type: 'Abs',
+    value: target,
+  }))
+
+  return {
+    ast,
+    focusedPath: [...path, 'value'],
+  }
+}
+
+export function insertRootAtPath(root: AstNode, path: NodePath, withDegree: boolean): CommandResult {
+  const wasPlaceholder = getNodeAtPath(root, path).type === 'Placeholder'
+
+  const ast = updateNodeAtPath(root, path, (target) => ({
+    type: 'Root',
+    radicand: target,
+    degree: withDegree ? makePlaceholder() : null,
+  }))
+
+  const focusedPath: NodePath = withDegree
+    ? [...path, 'degree']
+    : wasPlaceholder
+      ? [...path, 'radicand']
+      : clonePath(path)
+
+  return { ast, focusedPath }
+}
+
+export function insertFunctionAtPath(root: AstNode, path: NodePath, name: string): CommandResult {
+  const ast = updateNodeAtPath(root, path, (target) => ({
+    type: 'FunctionCall',
+    name,
+    args: [target],
+  }))
+
+  return {
+    ast,
+    focusedPath: [...path, 'args', 0],
+  }
+}
+
+interface VariadicContext {
+  parentPath: NodePath
+  parent: AstNode
+  key: 'children' | 'args'
+  index: number
+}
+
+function variadicContext(root: AstNode, path: NodePath): VariadicContext | null {
+  if (path.length < 2) {
+    return null
+  }
+
+  const index = path[path.length - 1]
+  const key = path[path.length - 2]
+
+  if (typeof index !== 'number' || (key !== 'children' && key !== 'args')) {
+    return null
+  }
+
+  const parentPath = path.slice(0, -2)
+  const parent = getNodeAtPath(root, parentPath)
+
+  return { parentPath, parent, key, index }
+}
+
+export function insertSiblingAfterAtPath(root: AstNode, path: NodePath): CommandResult | null {
+  const ctx = variadicContext(root, path)
+
+  if (!ctx) {
+    return null
+  }
+
+  const collection = getChildValue(ctx.parent, ctx.key)
+
+  if (!Array.isArray(collection)) {
+    return null
+  }
+
+  const next = [...collection]
+  next.splice(ctx.index + 1, 0, makePlaceholder())
+
+  return {
+    ast: replaceNodeAtPath(root, ctx.parentPath, setChildValue(ctx.parent, ctx.key, next)),
+    focusedPath: [...ctx.parentPath, ctx.key, ctx.index + 1],
+  }
+}
+
+export function removeVariadicChildAtPath(root: AstNode, path: NodePath): CommandResult | null {
+  const ctx = variadicContext(root, path)
+
+  if (!ctx) {
+    return null
+  }
+
+  const collection = getChildValue(ctx.parent, ctx.key)
+
+  if (!Array.isArray(collection)) {
+    return null
+  }
+
+  // Collapse a two-element Add/Multiply to its surviving operand.
+  if ((ctx.parent.type === 'Add' || ctx.parent.type === 'Multiply') && collection.length === 2) {
+    const remaining = collection[ctx.index === 0 ? 1 : 0]
+
+    return {
+      ast: replaceNodeAtPath(root, ctx.parentPath, remaining),
+      focusedPath: clonePath(ctx.parentPath),
+    }
+  }
+
+  if (collection.length <= 1) {
+    return null
+  }
+
+  const next = collection.filter((_, index) => index !== ctx.index)
+
+  return {
+    ast: replaceNodeAtPath(root, ctx.parentPath, setChildValue(ctx.parent, ctx.key, next)),
+    focusedPath: [...ctx.parentPath, ctx.key, Math.max(0, ctx.index - 1)],
+  }
+}
+
+// Delete a placeholder: drop it from a variadic parent when possible, otherwise
+// collapse the parent to its first remaining non-placeholder child.
+export function deletePlaceholderAtPath(root: AstNode, path: NodePath): CommandResult {
+  const variadic = removeVariadicChildAtPath(root, path)
+
+  if (variadic) {
+    return variadic
+  }
+
+  const parentNodePath = fallbackFocusAfterDelete(path)
+  const parent = getNodeAtPath(root, parentNodePath)
+
+  let keep: AstNode | null = null
+
+  for (const key of childKeysForNode(parent)) {
+    const value = getChildValue(parent, key)
+
+    if (value === null || Array.isArray(value)) {
+      continue
+    }
+
+    if (value.type !== 'Placeholder') {
+      keep = value
+      break
+    }
+  }
+
+  return {
+    ast: replaceNodeAtPath(root, parentNodePath, keep ?? makePlaceholder()),
+    focusedPath: clonePath(parentNodePath),
   }
 }
