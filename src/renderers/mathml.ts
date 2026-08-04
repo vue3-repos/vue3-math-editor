@@ -40,6 +40,10 @@ export function astToContentMathML(node: AstNode): string {
     case 'Abs':
       return renderApply('abs', [astToContentMathML(node.value)])
 
+    // Explicit brackets are purely presentational; export the content.
+    case 'Group':
+      return astToContentMathML(node.value)
+
     case 'Root':
       return node.degree
         ? `
@@ -101,7 +105,7 @@ export function astToContentMathML(node: AstNode): string {
         <apply>
           <diff/>
           <bvar>
-            <ci>${node.variable}</ci>
+            ${astToContentMathML(node.variable)}
           </bvar>
           ${astToContentMathML(node.expression)}
         </apply>

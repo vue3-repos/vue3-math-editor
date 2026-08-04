@@ -68,7 +68,13 @@ export const NODE_REGISTRY: Record<AstNodeType, NodeDefinition> = {
   Derivative: {
     type: 'Derivative',
     label: 'Derivative',
-    childCollections: ['expression'],
+    childCollections: ['variable', 'expression'],
+    kind: 'wrapper',
+  },
+  Group: {
+    type: 'Group',
+    label: 'Brackets',
+    childCollections: ['value'],
     kind: 'wrapper',
   },
   Placeholder: {
