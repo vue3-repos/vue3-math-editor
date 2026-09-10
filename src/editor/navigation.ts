@@ -74,17 +74,61 @@ const LINEAR_PRECEDENCE: Partial<Record<AstNode['type'], number>> = {
 export interface OperatorClimb {
   path: NodePath
   siblingParent: boolean
+  // The climb hit a *different*-typed variadic parent (e.g. a Multiply,
+  // while typing "+") whose own precedence would normally let the operator
+  // climb straight past it — but the caret sits strictly mid-list there,
+  // not at that parent's own edge. Wrapping the whole parent in that case
+  // would silently discard the caret's position ("4x" + caret before "x" +
+  // "+3" would become "4x+3"); splitting its children at this gap instead
+  // is what the caller should do.
+  splitAt: { parentPath: NodePath; index: number } | null
 }
 
-// Where should a typed binary operator apply? Starting from the focused node,
-// climb through enclosing linear operators of equal or tighter binding so that
-// "4*t-3" parses as (4·t)-3 while "2+3*4" keeps 3·4 together. When the climb
-// meets a parent of `siblingParentType` (an Add for "+", a Multiply for "*"),
-// stop and report it so the caller can insert a sibling term there instead of
-// nesting.
+// Does `path`'s own leaf-span reach the equation's outer boundary in the
+// direction `side` points toward? Used to decide whether it's safe to keep
+// climbing an operator's insertion point through a structural node
+// (fraction, root, function call, ...) — safe only when there is truly
+// nothing else, anywhere, on that side to disturb.
+function isAtGlobalEdge(root: AstNode, path: NodePath, side: CaretSide): boolean {
+  const leaves = listLeafPaths(root)
+  let first = -1
+  let last = -1
+
+  leaves.forEach((leaf, index) => {
+    if (isPathPrefix(path, leaf)) {
+      if (first < 0) {
+        first = index
+      }
+
+      last = index
+    }
+  })
+
+  if (first < 0) {
+    return false
+  }
+
+  return side === 'before' ? first === 0 : last === leaves.length - 1
+}
+
+// Where should a typed binary operator apply? Starting from the focused
+// node, climb through enclosing linear operators of equal or tighter
+// binding so that "4*t-3" parses as (4·t)-3 while "2+3*4" keeps 3·4
+// together. When the climb meets a parent of `siblingParentType` (an Add
+// for "+", a Multiply for "*"), stop and report it so the caller can insert
+// a sibling term there instead of nesting.
+//
+// A structural slot (fraction, root, function call, ...) normally stops
+// the climb outright — typing an operator inside one stays inside — but
+// that protection only matters when there's something else, anywhere, on
+// this side to disturb. If the focused leaf already reaches the equation's
+// own outer edge in this direction, the slot *is* the whole equation out
+// that way, so escaping it is safe (this is what lets "x^2" + "+1" reach
+// "x^2 + 1" directly, without first having to select the whole power).
 export function climbForOperator(
   root: AstNode,
   path: NodePath,
+  side: CaretSide,
   operatorPrecedence: number,
   siblingParentType: 'Add' | 'Multiply' | null,
 ): OperatorClimb {
@@ -94,19 +138,37 @@ export function climbForOperator(
     const parent = parentNodePath(current)
 
     if (!parent) {
-      return { path: current, siblingParent: false }
+      return { path: current, siblingParent: false, splitAt: null }
     }
 
     const parentNode = getNodeAtPath(root, parent)
 
     if (siblingParentType && parentNode.type === siblingParentType) {
-      return { path: current, siblingParent: true }
+      return { path: current, siblingParent: true, splitAt: null }
     }
 
     const precedence = LINEAR_PRECEDENCE[parentNode.type]
 
-    if (precedence === undefined || precedence < operatorPrecedence) {
-      return { path: current, siblingParent: false }
+    if (precedence === undefined) {
+      if (isAtGlobalEdge(root, current, side)) {
+        current = parent
+        continue
+      }
+
+      return { path: current, siblingParent: false, splitAt: null }
+    }
+
+    if (precedence < operatorPrecedence) {
+      return { path: current, siblingParent: false, splitAt: null }
+    }
+
+    if (siblingParentType && (parentNode.type === 'Add' || parentNode.type === 'Multiply')) {
+      const index = current[current.length - 1] as number
+      const atEdge = side === 'before' ? index === 0 : index === parentNode.children.length - 1
+
+      if (!atEdge) {
+        return { path: current, siblingParent: false, splitAt: { parentPath: parent, index } }
+      }
     }
 
     current = parent

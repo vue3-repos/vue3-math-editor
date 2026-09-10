@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { moveLeaf, stepCaret } from '../src/editor/navigation'
+import { climbForOperator, moveLeaf, stepCaret } from '../src/editor/navigation'
 import type { AstNode } from '../src/types/ast'
 
 // z + a*b -> Add(z, Multiply(a, b)). Leaves in reading order: z, a, b.
@@ -136,5 +136,79 @@ describe('stepCaret', () => {
       path: z2,
       side: 'before',
     })
+  })
+})
+
+// 4x -> Multiply(4, x). Leaves: 4, x.
+const fourX: AstNode = {
+  type: 'Multiply',
+  children: [
+    { type: 'Number', value: 4 },
+    { type: 'Identifier', name: 'x' },
+  ],
+}
+
+// x^2 -> Power(x, 2), alone (nothing else in the equation).
+const xToTheTwo: AstNode = {
+  type: 'Power',
+  base: { type: 'Identifier', name: 'x' },
+  exponent: { type: 'Number', value: 2 },
+}
+
+// 1/x + 5 -> Add(Divide(1, x), 5). Leaves: 1, x, 5.
+const oneOverXPlusFive: AstNode = {
+  type: 'Add',
+  children: [
+    {
+      type: 'Divide',
+      numerator: { type: 'Number', value: 1 },
+      denominator: { type: 'Identifier', name: 'x' },
+    },
+    { type: 'Number', value: 5 },
+  ],
+}
+
+describe('climbForOperator', () => {
+  it('splits a different-typed variadic parent at a mid-list caret instead of wrapping it whole', () => {
+    // The reported bug: "4x" with the caret before "x", typing "+" — used
+    // to climb straight past the Multiply (wrapping it whole, giving
+    // "4x+3"), discarding that the caret sat strictly between its two
+    // factors. It should report a split at that gap instead.
+    const climb = climbForOperator(fourX, ['children', 1], 'before', 2, 'Add')
+    expect(climb.splitAt).toEqual({ parentPath: [], index: 1 })
+    expect(climb.siblingParent).toBe(false)
+  })
+
+  it('does not split when the caret is at the variadic parent\'s own edge', () => {
+    // Caret after "x" (the last factor) — this is the ordinary "append
+    // after the whole product" case ("4*t-3" style), not a mid-list split.
+    const climb = climbForOperator(fourX, ['children', 1], 'after', 2, 'Add')
+    expect(climb.splitAt).toBeNull()
+    expect(climb.path).toEqual([])
+  })
+
+  it('escapes a structural slot when the leaf already reaches the equation\'s outer edge', () => {
+    // "x^2" alone: the exponent is the last leaf in the *whole* equation,
+    // so there's nothing else to disturb by letting "+1" escape the Power
+    // entirely and wrap the whole thing — reaching "x^2 + 1" directly
+    // instead of "x^(2+1)".
+    const climb = climbForOperator(xToTheTwo, ['exponent'], 'after', 2, 'Add')
+    expect(climb.path).toEqual([])
+    expect(climb.splitAt).toBeNull()
+  })
+
+  it('stays inside a structural slot when something else exists to protect', () => {
+    // "1/x + 5", focused on the denominator: "5" sits outside the
+    // fraction, so escaping the Divide here would wrongly disturb it.
+    // Typing "+3" must stay inside, building "1/(x+3) + 5".
+    const climb = climbForOperator(
+      oneOverXPlusFive,
+      ['children', 0, 'denominator'],
+      'after',
+      2,
+      'Add',
+    )
+    expect(climb.path).toEqual(['children', 0, 'denominator'])
+    expect(climb.splitAt).toBeNull()
   })
 })

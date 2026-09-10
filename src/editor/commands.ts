@@ -758,6 +758,66 @@ export function insertImplicitFactorAtPath(
   return replaceFocusedNode(base.ast, base.focusedPath, factor)
 }
 
+// A typed operator (e.g. "+") climbing past a *different*-typed variadic
+// parent (e.g. a Multiply) would normally wrap the whole parent — but if
+// the caret sits strictly mid-list there, that silently discards its exact
+// position: "4x" with the caret before "x", typing "+3", would become
+// "4x+3" instead of the intended "4+3x". Splitting the parent's children
+// at that gap and building the new operator's two sides directly from the
+// two halves (collapsing a lone survivor rather than wrapping it in a
+// redundant single-child Add/Multiply) keeps the caret's position
+// meaningful. `parentPath`/`index` come from climbForOperator's `splitAt`.
+export function splitVariadicAtCaret(
+  root: AstNode,
+  parentPath: NodePath,
+  index: number,
+  side: CaretSide,
+  newParentType: 'Add' | 'Multiply',
+): CommandResult {
+  const parentNode = getNodeAtPath(root, parentPath)
+
+  if (parentNode.type !== 'Add' && parentNode.type !== 'Multiply') {
+    throw new Error('splitVariadicAtCaret expects an Add or Multiply parent')
+  }
+
+  const collection = parentNode.children
+  const splitIndex = side === 'before' ? index : index + 1
+
+  const collapse = (items: AstNode[]): AstNode => {
+    if (items.length === 1) {
+      return items[0]
+    }
+
+    return parentNode.type === 'Add' ? { type: 'Add', children: items } : { type: 'Multiply', children: items }
+  }
+
+  const leftItems = collection.slice(0, splitIndex)
+  const rightItems = collection.slice(splitIndex)
+  const left = collapse(leftItems)
+  const right = collapse(rightItems)
+
+  const ast = replaceNodeAtPath(
+    root,
+    parentPath,
+    newParentType === 'Add' ? { type: 'Add', children: [left, right] } : { type: 'Multiply', children: [left, right] },
+  )
+
+  // The original leaf lands at the start of `rightItems` when splitting
+  // 'before' it, or the end of `leftItems` when splitting 'after' it —
+  // point the focus at wherever it actually ended up, so the caret's exact
+  // position (and side) survives the restructuring.
+  const focusedPath: NodePath =
+    side === 'before'
+      ? rightItems.length === 1
+        ? [...parentPath, 'children', 1]
+        : [...parentPath, 'children', 1, 'children', 0]
+      : leftItems.length === 1
+        ? [...parentPath, 'children', 0]
+        : [...parentPath, 'children', 0, 'children', leftItems.length - 1]
+
+  return { ast, focusedPath }
+}
+
 export function removeVariadicChildAtPath(root: AstNode, path: NodePath): CommandResult | null {
   const ctx = variadicContext(root, path)
 

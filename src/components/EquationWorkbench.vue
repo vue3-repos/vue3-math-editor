@@ -35,6 +35,7 @@ import {
   replaceFocusedNode,
   replaceNodeWithPlaceholder,
   resolveCommandPath,
+  splitVariadicAtCaret,
   unwrapNodeAtPath,
   type CommandResult,
   type NodeCommand,
@@ -206,11 +207,27 @@ function wrapWithPrecedence(
   }
 
   const path = resolveCommandPath(state.focusedPath)
-  const climbed = climbForOperator(state.ast, path, operatorPrecedence, siblingParentType)
+  const side = state.caretSide
+  const climbed = climbForOperator(state.ast, path, side, operatorPrecedence, siblingParentType)
+
+  if (climbed.splitAt && siblingParentType) {
+    const result = splitVariadicAtCaret(
+      state.ast,
+      climbed.splitAt.parentPath,
+      climbed.splitAt.index,
+      side,
+      siblingParentType,
+    )
+    applyCommandResult(result)
+    // The split preserves *where* the caret points, not just *that* it
+    // does — typing the next character (e.g. "3" in "4" + "3x") still
+    // needs to land on the correct side of it.
+    currentState().caretSide = side
+    return
+  }
 
   if (climbed.siblingParent) {
-    const insertSibling =
-      state.caretSide === 'before' ? insertSiblingBeforeAtPath : insertSiblingAfterAtPath
+    const insertSibling = side === 'before' ? insertSiblingBeforeAtPath : insertSiblingAfterAtPath
     const result = insertSibling(state.ast, climbed.path)
 
     if (result) {

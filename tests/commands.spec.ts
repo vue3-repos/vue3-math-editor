@@ -7,6 +7,7 @@ import {
   firstChildPath,
   getNodeAtPath,
   insertImplicitFactorAtPath,
+  splitVariadicAtCaret,
 } from '../src/editor/commands'
 import type { AstNode } from '../src/types/ast'
 
@@ -186,5 +187,64 @@ describe('convertIdentifierToFunctionCallAtPath', () => {
       args: [{ type: 'Placeholder' }],
     })
     expect(result.focusedPath).toEqual(['children', 1, 'args', 0])
+  })
+})
+
+describe('splitVariadicAtCaret', () => {
+  // "4x" with the caret before "x", typing "+3" -> "4+3x". Splitting the
+  // Multiply's two factors at that gap and collapsing each lone survivor
+  // (rather than wrapping it in a redundant single-child Multiply) gives
+  // Add(4, x) directly, ready for "3" to land before "x" as usual.
+  it('splits a two-factor Multiply into Add(left, right), collapsing each side', () => {
+    const fourX: AstNode = {
+      type: 'Multiply',
+      children: [
+        { type: 'Number', value: 4 },
+        { type: 'Identifier', name: 'x' },
+      ],
+    }
+
+    const result = splitVariadicAtCaret(fourX, [], 1, 'before', 'Add')
+
+    expect(result.ast).toEqual({
+      type: 'Add',
+      children: [
+        { type: 'Number', value: 4 },
+        { type: 'Identifier', name: 'x' },
+      ],
+    })
+    expect(result.focusedPath).toEqual(['children', 1])
+  })
+
+  it('keeps the surviving multi-element side as its own list and points focus at the original leaf inside it', () => {
+    // 4*x*y, caret before "x": splits into Add(4, Multiply(x, y)) — "x"
+    // (the leaf the caret was actually on) must still be exactly where
+    // focus lands, now inside the new Multiply's first slot.
+    const fourXY: AstNode = {
+      type: 'Multiply',
+      children: [
+        { type: 'Number', value: 4 },
+        { type: 'Identifier', name: 'x' },
+        { type: 'Identifier', name: 'y' },
+      ],
+    }
+
+    const result = splitVariadicAtCaret(fourXY, [], 1, 'before', 'Add')
+
+    expect(result.ast).toEqual({
+      type: 'Add',
+      children: [
+        { type: 'Number', value: 4 },
+        {
+          type: 'Multiply',
+          children: [
+            { type: 'Identifier', name: 'x' },
+            { type: 'Identifier', name: 'y' },
+          ],
+        },
+      ],
+    })
+    expect(getNodeAtPath(result.ast, result.focusedPath)).toEqual({ type: 'Identifier', name: 'x' })
+    expect(result.focusedPath).toEqual(['children', 1, 'children', 0])
   })
 })
