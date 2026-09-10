@@ -163,11 +163,17 @@ export interface CaretPosition {
   side: CaretSide
 }
 
-// Each leaf has two caret stops — before and after. A single ArrowLeft from
-// "after t" first flips to "before t" *in place* (no leaf jump), mirroring a
-// real text caret stepping across one boundary at a time; only a second
-// consecutive press in the same direction moves on to the neighboring leaf.
-// Returns null at the equation boundary (leftmost 'before' / rightmost
+// Each leaf has two caret stops — before and after — but "after this leaf"
+// and "before the very next leaf" are the same physical gap (e.g. in "4x",
+// right-of-4 and left-of-x are one insertion point, not two). 'before' is
+// the canonical form for every such shared gap, so a single ArrowLeft from
+// "after t" flips to "before t" *in place* (no leaf jump, since 'before' has
+// no earlier duplicate to fold into); only a second consecutive press moves
+// on to the neighboring leaf. Going the other way, flipping "before"
+// forward would only recreate that same already-canonical gap when a next
+// leaf exists, so it's skipped in favor of landing on it directly —
+// stepping forward from "left of 4" reaches "left of x" in one press, not
+// two. Returns null at the equation boundary (leftmost 'before' / rightmost
 // 'after'), so callers leave the caret exactly where it is.
 export function stepCaret(
   root: AstNode,
@@ -184,7 +190,8 @@ export function stepCaret(
   }
 
   if (caret.side === 'before') {
-    return { path: caret.path, side: 'after' }
+    const next = moveLeaf(root, caret.path, 'forward')
+    return next ? { path: next, side: 'before' } : { path: caret.path, side: 'after' }
   }
 
   const next = moveLeaf(root, caret.path, 'forward')
