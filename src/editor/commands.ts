@@ -399,6 +399,28 @@ export function insertMultiplyAtPath(root: AstNode, path: NodePath): CommandResu
   }
 }
 
+// Mirror of insertMultiplyAtPath for typing a new factor to the *left* of
+// the focused term (e.g. arriving at "t" via ArrowLeft, then typing "3" to
+// build "3t" rather than "t3").
+export function insertMultiplyBeforeAtPath(root: AstNode, path: NodePath): CommandResult {
+  const ast = updateNodeAtPath(root, path, (target) =>
+    target.type === 'Multiply'
+      ? {
+          ...target,
+          children: [makePlaceholder(), ...target.children],
+        }
+      : {
+          type: 'Multiply',
+          children: [makePlaceholder(), target],
+        },
+  )
+
+  return {
+    ast,
+    focusedPath: [...path, 'children', 0],
+  }
+}
+
 export function insertSubtractAtPath(root: AstNode, path: NodePath): CommandResult {
   const ast = updateNodeAtPath(root, path, (target) => ({
     type: 'Subtract',
@@ -686,6 +708,30 @@ export function insertSiblingAfterAtPath(root: AstNode, path: NodePath): Command
   return {
     ast: replaceNodeAtPath(root, ctx.parentPath, setChildValue(ctx.parent, ctx.key, next)),
     focusedPath: [...ctx.parentPath, ctx.key, ctx.index + 1],
+  }
+}
+
+// Mirror of insertSiblingAfterAtPath: inserts at the focused term's own
+// index, pushing it (and everything after) one slot to the right.
+export function insertSiblingBeforeAtPath(root: AstNode, path: NodePath): CommandResult | null {
+  const ctx = variadicContext(root, path)
+
+  if (!ctx) {
+    return null
+  }
+
+  const collection = getChildValue(ctx.parent, ctx.key)
+
+  if (!Array.isArray(collection)) {
+    return null
+  }
+
+  const next = [...collection]
+  next.splice(ctx.index, 0, makePlaceholder())
+
+  return {
+    ast: replaceNodeAtPath(root, ctx.parentPath, setChildValue(ctx.parent, ctx.key, next)),
+    focusedPath: [...ctx.parentPath, ctx.key, ctx.index],
   }
 }
 
