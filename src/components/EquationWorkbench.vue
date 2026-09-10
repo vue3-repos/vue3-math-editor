@@ -10,6 +10,7 @@ import EquationEditor from './EquationEditor.vue'
 
 import {
   collapseSelection,
+  deleteEmptyGroupAtPath,
   deletePlaceholderAtPath,
   getNodeAtPath,
   getNextPlaceholderPath,
@@ -559,8 +560,15 @@ function handleBackspace() {
   }
 
   // Deleting a bracket group removes the brackets but keeps the content.
+  // An empty group has no content worth keeping, so drop it entirely
+  // instead of unwrapping to a placeholder that would need a second
+  // backspace to clear.
   if (node.type === 'Group') {
-    applyCommandResult(unwrapNodeAtPath(state.ast, path))
+    if (node.value.type === 'Placeholder') {
+      applyCommandResult(deleteEmptyGroupAtPath(state.ast, path))
+    } else {
+      applyCommandResult(unwrapNodeAtPath(state.ast, path))
+    }
     return
   }
 
@@ -571,6 +579,14 @@ function handleBackspace() {
       state.focusedPath = []
       state.selection = collapseSelection([])
       numberEdit.value = null
+      return
+    }
+
+    // Focus is inside an empty group's parens; delete the group as a
+    // whole rather than collapsing it to a bare placeholder in place.
+    const enclosingGroupPath = parentNodePath(path)
+    if (enclosingGroupPath && getNodeAtPath(state.ast, enclosingGroupPath).type === 'Group') {
+      applyCommandResult(deleteEmptyGroupAtPath(state.ast, enclosingGroupPath))
       return
     }
 

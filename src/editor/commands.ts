@@ -729,3 +729,20 @@ export function deletePlaceholderAtPath(root: AstNode, path: NodePath): CommandR
     focusedPath: clonePath(parentNodePath),
   }
 }
+
+// Delete an empty group ("()" with a placeholder inside): drop it from a
+// variadic parent when possible, otherwise collapse it to a bare
+// placeholder in place. This is what makes backspacing empty parentheses a
+// single step whether focus is on the group itself or on the placeholder
+// inside it — the group carries no content worth preserving, so unlike
+// unwrapNodeAtPath it never leaves the placeholder behind as an orphaned
+// sibling that needs a second backspace to clear.
+export function deleteEmptyGroupAtPath(root: AstNode, groupPath: NodePath): CommandResult {
+  const variadic = removeVariadicChildAtPath(root, groupPath)
+
+  if (variadic) {
+    return variadic
+  }
+
+  return replaceNodeWithPlaceholder(root, groupPath)
+}
