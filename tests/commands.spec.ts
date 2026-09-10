@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  convertIdentifierToFunctionCallAtPath,
   deleteEmptyGroupAtPath,
   deletePlaceholderAtPath,
   firstChildPath,
@@ -73,5 +74,29 @@ describe('firstChildPath', () => {
     }
 
     expect(firstChildPath(equal)).toEqual(['left'])
+  })
+})
+
+describe('convertIdentifierToFunctionCallAtPath', () => {
+  // Typing "2x(+4" should give 2*x(□+4), not 2*x(x+4). The identifier is
+  // consumed as the function's *name*, so it must not also survive as a
+  // copy of itself in the argument list.
+  it('starts the argument list with a placeholder instead of the identifier itself', () => {
+    const ast: AstNode = {
+      type: 'Multiply',
+      children: [
+        { type: 'Number', value: 2 },
+        { type: 'Identifier', name: 'x' },
+      ],
+    }
+
+    const result = convertIdentifierToFunctionCallAtPath(ast, ['children', 1])
+
+    expect(getNodeAtPath(result.ast, ['children', 1])).toEqual({
+      type: 'FunctionCall',
+      name: 'x',
+      args: [{ type: 'Placeholder' }],
+    })
+    expect(result.focusedPath).toEqual(['children', 1, 'args', 0])
   })
 })

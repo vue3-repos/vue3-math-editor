@@ -10,6 +10,7 @@ import EquationEditor from './EquationEditor.vue'
 
 import {
   collapseSelection,
+  convertIdentifierToFunctionCallAtPath,
   deleteEmptyGroupAtPath,
   deletePlaceholderAtPath,
   getNodeAtPath,
@@ -480,9 +481,10 @@ function handleOpenParen() {
 
   const node = getNodeAtPath(state.ast, path)
 
-  // "sin(" turns the identifier into a function call.
+  // "sin(" turns the identifier into a function call, starting with an
+  // empty argument rather than repeating the identifier as its own argument.
   if (node.type === 'Identifier') {
-    applyCommandResult(insertFunctionAtPath(state.ast, path, node.name))
+    applyCommandResult(convertIdentifierToFunctionCallAtPath(state.ast, path))
     return
   }
 

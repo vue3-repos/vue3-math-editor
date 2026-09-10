@@ -617,6 +617,31 @@ export function insertFunctionAtPath(root: AstNode, path: NodePath, name: string
   }
 }
 
+// Typing "(" right after an identifier turns it into a function call, e.g.
+// "x(" -> x(□), using the identifier's own name as the function name. Unlike
+// insertFunctionAtPath (which wraps some other already-typed value as the
+// first argument), the identifier itself is consumed as the name, so the
+// argument list must start with a fresh placeholder rather than a copy of
+// the identifier.
+export function convertIdentifierToFunctionCallAtPath(root: AstNode, path: NodePath): CommandResult {
+  const node = getNodeAtPath(root, path)
+
+  if (node.type !== 'Identifier') {
+    throw new Error('convertIdentifierToFunctionCallAtPath expects an Identifier node')
+  }
+
+  const ast = replaceNodeAtPath(root, path, {
+    type: 'FunctionCall',
+    name: node.name,
+    args: [makePlaceholder()],
+  })
+
+  return {
+    ast,
+    focusedPath: [...path, 'args', 0],
+  }
+}
+
 interface VariadicContext {
   parentPath: NodePath
   parent: AstNode
