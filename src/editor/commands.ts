@@ -232,6 +232,8 @@ export function firstChildPath(node: AstNode): NodePath | null {
       return node.children.length > 0 ? ['children', 0] : null
     case 'FunctionCall':
       return node.args.length > 0 ? ['args', 0] : null
+    case 'Equal':
+      return ['left']
     case 'Subtract':
       return ['minuend']
     case 'Divide':

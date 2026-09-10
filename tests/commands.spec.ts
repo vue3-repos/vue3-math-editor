@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { deleteEmptyGroupAtPath, deletePlaceholderAtPath, getNodeAtPath } from '../src/editor/commands'
+import {
+  deleteEmptyGroupAtPath,
+  deletePlaceholderAtPath,
+  firstChildPath,
+  getNodeAtPath,
+} from '../src/editor/commands'
 import type { AstNode } from '../src/types/ast'
 
 // Backspacing an empty "()" should remove it in one step, whether focus is
@@ -51,5 +56,22 @@ describe('handleBackspace-style redirect from an empty group\'s inner placeholde
 
     expect(getNodeAtPath(result.ast, ['children', 1])).toEqual({ type: 'Placeholder' })
     expect((result.ast as { children: AstNode[] }).children).toHaveLength(2)
+  })
+})
+
+describe('firstChildPath', () => {
+  // Drilling in (ArrowDown) with the whole equation selected resolves the
+  // root node's first child path. "Equal" was missing from the switch, so
+  // it fell through to the default `null` and drill-in from the root did
+  // nothing — even though sibling logic (childKeysForNode) already knew
+  // "Equal" has "left"/"right" children.
+  it('drills into the left-hand side of an Equal node', () => {
+    const equal: AstNode = {
+      type: 'Equal',
+      left: { type: 'Derivative', expression: { type: 'Identifier', name: 'x' }, variable: { type: 'Identifier', name: 't' } },
+      right: { type: 'Number', value: 5 },
+    }
+
+    expect(firstChildPath(equal)).toEqual(['left'])
   })
 })
