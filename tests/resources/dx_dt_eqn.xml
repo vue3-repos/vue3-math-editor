@@ -1,0 +1,43 @@
+<apply>
+      <eq/>
+      
+        <apply>
+          <diff/>
+          <bvar>
+            <ci>t</ci>
+          </bvar>
+          <ci>x</ci>
+        </apply>
+      
+      
+    <apply>
+      <plus/>
+      
+    <apply>
+      <times/>
+      <cn>4</cn>
+      
+    <apply>
+      <power/>
+      <ci>t</ci>
+      <cn>2</cn>
+    </apply>
+  
+    </apply>
+  
+      
+    <apply>
+      <abs/>
+      
+    <apply>
+      <minus/>
+      <ci>t</ci>
+      <cn>3</cn>
+    </apply>
+  
+    </apply>
+  
+    </apply>
+  
+    </apply>
+    

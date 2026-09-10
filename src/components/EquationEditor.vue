@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import katex from 'katex'
 
 import { astToInteractiveLatex, decodePath, encodePath } from '../renderers/interactiveLatex'
+import { measureFocusRect } from '../editor/focusRect'
 import type { AstNode } from '../types/ast'
 import type { NodePath } from '../types/editor'
 
@@ -33,7 +34,7 @@ const html = computed(() => {
 
 // KaTeX marks the focused node with an inline span, but an inline element's
 // CSS background only covers its own line box, not tall children such as
-// fractions. Measure the span instead and draw an absolutely positioned ring.
+// fractions; measureFocusRect finds the actual painted extent instead.
 function updateRing() {
   const container = surfaceEl.value
 
@@ -49,7 +50,13 @@ function updateRing() {
     return
   }
 
-  const rect = target.getBoundingClientRect()
+  const bounds = measureFocusRect(target)
+  const rect = {
+    left: bounds.left,
+    top: bounds.top,
+    width: bounds.right - bounds.left,
+    height: bounds.bottom - bounds.top,
+  }
   const base = container.getBoundingClientRect()
   const pad = 3
 
