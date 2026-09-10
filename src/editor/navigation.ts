@@ -1,5 +1,5 @@
 import type { AstNode } from '../types/ast'
-import type { NodePath } from '../types/editor'
+import type { CaretSide, NodePath } from '../types/editor'
 import { childKeysForNode, firstChildPath, getChildValue, getNodeAtPath } from './commands'
 
 export function pathsEqual(a: NodePath, b: NodePath): boolean {
@@ -156,4 +156,37 @@ export function moveLeaf(
   }
 
   return direction === 'forward' ? leaves[last + 1] ?? null : leaves[first - 1] ?? null
+}
+
+export interface CaretPosition {
+  path: NodePath
+  side: CaretSide
+}
+
+// Each leaf has two caret stops — before and after. A single ArrowLeft from
+// "after t" first flips to "before t" *in place* (no leaf jump), mirroring a
+// real text caret stepping across one boundary at a time; only a second
+// consecutive press in the same direction moves on to the neighboring leaf.
+// Returns null at the equation boundary (leftmost 'before' / rightmost
+// 'after'), so callers leave the caret exactly where it is.
+export function stepCaret(
+  root: AstNode,
+  caret: CaretPosition,
+  direction: 'forward' | 'backward',
+): CaretPosition | null {
+  if (direction === 'backward') {
+    if (caret.side === 'after') {
+      return { path: caret.path, side: 'before' }
+    }
+
+    const prev = moveLeaf(root, caret.path, 'backward')
+    return prev ? { path: prev, side: 'before' } : null
+  }
+
+  if (caret.side === 'before') {
+    return { path: caret.path, side: 'after' }
+  }
+
+  const next = moveLeaf(root, caret.path, 'forward')
+  return next ? { path: next, side: 'after' } : null
 }

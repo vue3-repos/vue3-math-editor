@@ -6,6 +6,7 @@ import {
   deletePlaceholderAtPath,
   firstChildPath,
   getNodeAtPath,
+  insertImplicitFactorAtPath,
 } from '../src/editor/commands'
 import type { AstNode } from '../src/types/ast'
 
@@ -74,6 +75,93 @@ describe('firstChildPath', () => {
     }
 
     expect(firstChildPath(equal)).toEqual(['left'])
+  })
+})
+
+describe('insertImplicitFactorAtPath', () => {
+  // The reported bug: "2+t", focus on t, ArrowLeft (caret side 'before'),
+  // type "3" should give 2 + 3t, not 2 + t3 — there was previously no way
+  // to insert a new factor to the *left* of an existing term at all.
+  it('wraps a plain leaf in an implicit multiply, before or after, per side', () => {
+    const twoPlusT: AstNode = {
+      type: 'Add',
+      children: [
+        { type: 'Number', value: 2 },
+        { type: 'Identifier', name: 't' },
+      ],
+    }
+
+    const before = insertImplicitFactorAtPath(
+      twoPlusT,
+      ['children', 1],
+      { type: 'Number', value: 3 },
+      'before',
+    )
+    expect(getNodeAtPath(before.ast, ['children', 1])).toEqual({
+      type: 'Multiply',
+      children: [
+        { type: 'Number', value: 3 },
+        { type: 'Identifier', name: 't' },
+      ],
+    })
+    expect(before.focusedPath).toEqual(['children', 1, 'children', 0])
+
+    const after = insertImplicitFactorAtPath(
+      twoPlusT,
+      ['children', 1],
+      { type: 'Number', value: 3 },
+      'after',
+    )
+    expect(getNodeAtPath(after.ast, ['children', 1])).toEqual({
+      type: 'Multiply',
+      children: [
+        { type: 'Identifier', name: 't' },
+        { type: 'Number', value: 3 },
+      ],
+    })
+    expect(after.focusedPath).toEqual(['children', 1, 'children', 1])
+  })
+
+  it('inserts a before/after sibling when focus is already inside a Multiply', () => {
+    const twoTimesT: AstNode = {
+      type: 'Multiply',
+      children: [
+        { type: 'Number', value: 2 },
+        { type: 'Identifier', name: 't' },
+      ],
+    }
+
+    const before = insertImplicitFactorAtPath(
+      twoTimesT,
+      ['children', 1],
+      { type: 'Number', value: 3 },
+      'before',
+    )
+    expect(before.ast).toEqual({
+      type: 'Multiply',
+      children: [
+        { type: 'Number', value: 2 },
+        { type: 'Number', value: 3 },
+        { type: 'Identifier', name: 't' },
+      ],
+    })
+    expect(before.focusedPath).toEqual(['children', 1])
+
+    const after = insertImplicitFactorAtPath(
+      twoTimesT,
+      ['children', 1],
+      { type: 'Number', value: 3 },
+      'after',
+    )
+    expect(after.ast).toEqual({
+      type: 'Multiply',
+      children: [
+        { type: 'Number', value: 2 },
+        { type: 'Identifier', name: 't' },
+        { type: 'Number', value: 3 },
+      ],
+    })
+    expect(after.focusedPath).toEqual(['children', 2])
   })
 })
 

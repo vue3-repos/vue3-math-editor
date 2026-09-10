@@ -4,12 +4,14 @@ import katex from 'katex'
 
 import { astToInteractiveLatex, decodePath, encodePath } from '../renderers/interactiveLatex'
 import { measureFocusRect } from '../editor/focusRect'
+import { getNodeAtPath } from '../editor/commands'
 import type { AstNode } from '../types/ast'
-import type { NodePath } from '../types/editor'
+import type { CaretSide, NodePath } from '../types/editor'
 
 const props = defineProps<{
   modelValue: AstNode | null
   focusedPath: NodePath | null
+  caretSide: CaretSide
   isActive: boolean
 }>()
 
@@ -19,6 +21,7 @@ const emit = defineEmits<{
 
 const surfaceEl = ref<HTMLElement | null>(null)
 const ringStyle = ref<Record<string, string> | null>(null)
+const caretStyle = ref<Record<string, string> | null>(null)
 
 const html = computed(() => {
   const ast: AstNode = props.modelValue ?? { type: 'Placeholder' }
@@ -35,11 +38,19 @@ const html = computed(() => {
 // KaTeX marks the focused node with an inline span, but an inline element's
 // CSS background only covers its own line box, not tall children such as
 // fractions; measureFocusRect finds the actual painted extent instead.
-function updateRing() {
+//
+// A filled leaf (Number/Identifier) gets a thin blinking caret line at its
+// left or right edge, matching `caretSide` — that's the primary insertion
+// indicator. An empty Placeholder already has its own blinking glyph and
+// needs no indicator here. Anything else (a composite subtree) gets the
+// full-box highlight instead, since "before/after" isn't meaningful for a
+// whole selected block.
+function updateFocusIndicator() {
   const container = surfaceEl.value
 
   if (!container || !props.isActive || !props.focusedPath) {
     ringStyle.value = null
+    caretStyle.value = null
     return
   }
 
@@ -47,17 +58,35 @@ function updateRing() {
 
   if (!target) {
     ringStyle.value = null
+    caretStyle.value = null
     return
   }
 
   const bounds = measureFocusRect(target)
+  const base = container.getBoundingClientRect()
+  const focusedType = props.modelValue ? getNodeAtPath(props.modelValue, props.focusedPath).type : null
+
+  if (focusedType === 'Number' || focusedType === 'Identifier') {
+    ringStyle.value = null
+
+    const x = props.caretSide === 'before' ? bounds.left : bounds.right
+
+    caretStyle.value = {
+      left: `${x - base.left + container.scrollLeft}px`,
+      top: `${bounds.top - base.top + container.scrollTop}px`,
+      height: `${bounds.bottom - bounds.top}px`,
+    }
+    return
+  }
+
+  caretStyle.value = null
+
   const rect = {
     left: bounds.left,
     top: bounds.top,
     width: bounds.right - bounds.left,
     height: bounds.bottom - bounds.top,
   }
-  const base = container.getBoundingClientRect()
   const pad = 3
 
   ringStyle.value = {
@@ -68,23 +97,25 @@ function updateRing() {
   }
 }
 
-async function scheduleRingUpdate() {
+async function scheduleFocusIndicatorUpdate() {
   await nextTick()
-  updateRing()
+  updateFocusIndicator()
 }
 
-watch([html, () => props.focusedPath, () => props.isActive], scheduleRingUpdate, {
-  immediate: true,
-})
+watch(
+  [html, () => props.focusedPath, () => props.caretSide, () => props.isActive],
+  scheduleFocusIndicatorUpdate,
+  { immediate: true },
+)
 
 onMounted(() => {
-  window.addEventListener('resize', updateRing)
+  window.addEventListener('resize', updateFocusIndicator)
   // Re-measure once the math fonts finish loading; glyph metrics shift.
-  document.fonts?.ready.then(updateRing)
+  document.fonts?.ready.then(updateFocusIndicator)
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener('resize', updateRing)
+  window.removeEventListener('resize', updateFocusIndicator)
 })
 
 function handleClick(event: MouseEvent) {
@@ -110,6 +141,7 @@ function handleMousedown(event: MouseEvent) {
     @click="handleClick"
   >
     <div v-if="ringStyle" class="focus-ring" :style="ringStyle"></div>
+    <div v-if="caretStyle" class="insertion-caret" :style="caretStyle"></div>
     <div class="math-content" v-html="html"></div>
   </div>
 </template>
@@ -139,6 +171,16 @@ function handleMousedown(event: MouseEvent) {
   background: rgba(37, 99, 235, 0.1);
   border-radius: 5px;
   pointer-events: none;
+}
+
+.insertion-caret {
+  position: absolute;
+  z-index: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: #2563eb;
+  pointer-events: none;
+  animation: me-blink 1.1s step-end infinite;
 }
 
 .math-surface :deep(.katex-display) {

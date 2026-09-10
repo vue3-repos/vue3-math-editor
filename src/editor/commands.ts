@@ -1,5 +1,5 @@
 import type { AstNode, PlaceholderNode } from '../types/ast'
-import type { NodeChildKey, NodePath } from '../types/editor'
+import type { CaretSide, NodeChildKey, NodePath } from '../types/editor'
 
 export interface CommandResult {
   ast: AstNode
@@ -733,6 +733,29 @@ export function insertSiblingBeforeAtPath(root: AstNode, path: NodePath): Comman
     ast: replaceNodeAtPath(root, ctx.parentPath, setChildValue(ctx.parent, ctx.key, next)),
     focusedPath: [...ctx.parentPath, ctx.key, ctx.index],
   }
+}
+
+// Typing a new atom (digit/letter/bracket) next to a complete term multiplies
+// it in implicitly — "4" typed after "t" gives "4t". `side` decides which
+// side of the focused term the new factor lands on: if focus is already a
+// child of a Multiply, it's spliced in as a sibling before/after; otherwise
+// the focused node is wrapped in a new Multiply with the factor before/after
+// it. Either way the new factor's own slot is what gets returned focused, so
+// callers can drop `factor` straight into it.
+export function insertImplicitFactorAtPath(
+  root: AstNode,
+  path: NodePath,
+  factor: AstNode,
+  side: CaretSide,
+): CommandResult {
+  const ctx = variadicContext(root, path)
+
+  const base =
+    ctx && ctx.parent.type === 'Multiply'
+      ? (side === 'before' ? insertSiblingBeforeAtPath : insertSiblingAfterAtPath)(root, path)!
+      : (side === 'before' ? insertMultiplyBeforeAtPath : insertMultiplyAtPath)(root, path)
+
+  return replaceFocusedNode(base.ast, base.focusedPath, factor)
 }
 
 export function removeVariadicChildAtPath(root: AstNode, path: NodePath): CommandResult | null {

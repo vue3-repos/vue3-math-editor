@@ -22,11 +22,14 @@ import {
   insertFractionAtPath,
   insertFunctionAtPath,
   insertGroupAtPath,
+  insertImplicitFactorAtPath,
   insertMultiplyAtPath,
+  insertMultiplyBeforeAtPath,
   insertNegateAtPath,
   insertPowerAtPath,
   insertRootAtPath,
   insertSiblingAfterAtPath,
+  insertSiblingBeforeAtPath,
   insertSubtractAtPath,
   isPlaceholderAtPath,
   replaceFocusedNode,
@@ -39,9 +42,9 @@ import {
 import {
   climbForOperator,
   firstChildNodePath,
-  moveLeaf,
   parentNodePath,
   pathsEqual,
+  stepCaret,
 } from '../editor/navigation'
 import { astToLatex } from '../renderers/latex'
 import { renderMathJson } from '../renderers/mathjson'
@@ -59,6 +62,7 @@ function createEditorState(ast: AstNode | null = null): EditorState {
       focus: [],
     },
     mode: 'insert',
+    caretSide: 'after',
   }
 }
 
@@ -153,6 +157,7 @@ function applyCommandResult(result: CommandResult) {
   state.ast = result.ast
   state.focusedPath = result.focusedPath
   state.selection = collapseSelection(result.focusedPath)
+  state.caretSide = 'after'
   numberEdit.value = null
 }
 
@@ -185,24 +190,6 @@ function insertFunction(name: string) {
   wrapFocused((root, path) => insertFunctionAtPath(root, path, name))
 }
 
-// True when the focused node sits directly inside a variadic parent of `type`.
-function focusedVariadicParent(type: 'Add' | 'Multiply'): boolean {
-  const state = currentState()
-
-  if (!state.ast) {
-    return false
-  }
-
-  const path = resolveCommandPath(state.focusedPath)
-
-  if (path.length < 2 || path[path.length - 2] !== 'children') {
-    return false
-  }
-
-  const parent = parentNodePath(path)
-  return parent !== null && getNodeAtPath(state.ast, parent).type === type
-}
-
 // Apply a typed binary operator at the precedence-correct level: "4*t-3"
 // subtracts from the whole product, "2+3*4" keeps the product tight, and
 // explicit brackets or structural slots (fractions, roots, ...) stop the climb.
@@ -222,7 +209,9 @@ function wrapWithPrecedence(
   const climbed = climbForOperator(state.ast, path, operatorPrecedence, siblingParentType)
 
   if (climbed.siblingParent) {
-    const result = insertSiblingAfterAtPath(state.ast, climbed.path)
+    const insertSibling =
+      state.caretSide === 'before' ? insertSiblingBeforeAtPath : insertSiblingAfterAtPath
+    const result = insertSibling(state.ast, climbed.path)
 
     if (result) {
       applyCommandResult(result)
@@ -250,7 +239,9 @@ function insertAddSmart() {
 }
 
 function insertMultiplySmart() {
-  wrapWithPrecedence(insertMultiplyAtPath, 3, 'Multiply')
+  const command =
+    currentState().caretSide === 'before' ? insertMultiplyBeforeAtPath : insertMultiplyAtPath
+  wrapWithPrecedence(command, 3, 'Multiply')
 }
 
 // "-" on an empty slot means unary minus; on filled content it subtracts.
@@ -291,6 +282,7 @@ function focusEquationPath(index: number, path: NodePath) {
   const state = currentState()
   state.focusedPath = path
   state.selection = collapseSelection(path)
+  state.caretSide = 'after'
   numberEdit.value = null
   focusSurface()
 }
@@ -350,10 +342,13 @@ function startEquationWith(node: AstNode) {
   state.ast = node
   state.focusedPath = []
   state.selection = collapseSelection([])
+  state.caretSide = 'after'
 }
 
 // Typing a letter/digit right after a complete term multiplies implicitly,
-// mirroring how "2x" is entered in Mathfield.
+// mirroring how "2x" is entered in Mathfield. Which side of the focused term
+// the new factor lands on follows the caret: 'after' (the default) appends,
+// 'before' (reached via ArrowLeft) inserts ahead of it instead.
 function insertImplicitFactor(factor: AstNode) {
   const state = currentState()
 
@@ -362,17 +357,7 @@ function insertImplicitFactor(factor: AstNode) {
   }
 
   const path = resolveCommandPath(state.focusedPath)
-  let base: CommandResult | null = null
-
-  if (focusedVariadicParent('Multiply')) {
-    base = insertSiblingAfterAtPath(state.ast, path)
-  }
-
-  if (!base) {
-    base = insertMultiplyAtPath(state.ast, path)
-  }
-
-  applyCommandResult(replaceFocusedNode(base.ast, base.focusedPath, factor))
+  applyCommandResult(insertImplicitFactorAtPath(state.ast, path, factor, state.caretSide))
 }
 
 function typeLetter(char: string) {
@@ -391,10 +376,12 @@ function typeLetter(char: string) {
     return
   }
 
+  // Letters always extend the same identifier's name, regardless of caret
+  // side — building a name from either end is unambiguous (unlike a digit
+  // next to an identifier, see typeDigit below).
   if (node.type === 'Identifier') {
-    applyCommandResult(
-      replaceFocusedNode(state.ast, path, { ...node, name: `${node.name}${char}` }),
-    )
+    const name = state.caretSide === 'before' ? `${char}${node.name}` : `${node.name}${char}`
+    applyCommandResult(replaceFocusedNode(state.ast, path, { ...node, name }))
     return
   }
 
@@ -419,14 +406,22 @@ function typeDigit(digit: string) {
     return
   }
 
+  // Digits always extend the same number's digit string, regardless of
+  // caret side — "13" is unambiguously one number, however it was built.
   if (node.type === 'Number') {
-    const text = numberTextFor(path, node) + digit
+    const text =
+      state.caretSide === 'before'
+        ? `${digit}${numberTextFor(path, node)}`
+        : `${numberTextFor(path, node)}${digit}`
     applyCommandResult(replaceFocusedNode(state.ast, path, { ...node, value: Number(text) }))
     numberEdit.value = { key: JSON.stringify(path), text }
     return
   }
 
-  if (node.type === 'Identifier') {
+  // A digit right after an identifier is ambiguous — "x1" as a subscripted
+  // variable name (the default, caret 'after') vs. "3" as a new coefficient
+  // multiplied onto "t" (caret 'before', e.g. after pressing ArrowLeft).
+  if (node.type === 'Identifier' && state.caretSide === 'after') {
     applyCommandResult(
       replaceFocusedNode(state.ast, path, { ...node, name: `${node.name}${digit}` }),
     )
@@ -483,7 +478,10 @@ function handleOpenParen() {
 
   // "sin(" turns the identifier into a function call, starting with an
   // empty argument rather than repeating the identifier as its own argument.
-  if (node.type === 'Identifier') {
+  // Only when typed right after it (caret 'after') — with the caret
+  // positioned 'before' instead, "(" means "start a new group ahead of
+  // this term," same as any other implicit-factor insertion.
+  if (node.type === 'Identifier' && state.caretSide === 'after') {
     applyCommandResult(convertIdentifierToFunctionCallAtPath(state.ast, path))
     return
   }
@@ -526,7 +524,9 @@ function handleComma() {
     return
   }
 
-  const result = insertSiblingAfterAtPath(state.ast, resolveCommandPath(state.focusedPath))
+  const insertSibling =
+    state.caretSide === 'before' ? insertSiblingBeforeAtPath : insertSiblingAfterAtPath
+  const result = insertSibling(state.ast, resolveCommandPath(state.focusedPath))
 
   if (result) {
     applyCommandResult(result)
@@ -580,6 +580,7 @@ function handleBackspace() {
       state.ast = null
       state.focusedPath = []
       state.selection = collapseSelection([])
+      state.caretSide = 'after'
       numberEdit.value = null
       return
     }
@@ -631,14 +632,22 @@ function moveHorizontal(direction: 'forward' | 'backward') {
   }
 
   const path = resolveCommandPath(state.focusedPath)
-  const next = moveLeaf(state.ast, path, direction)
+  const next = stepCaret(state.ast, { path, side: state.caretSide }, direction)
 
-  // At either boundary there's no further leaf to walk to; stay put. Climbing
+  // At either boundary there's no further step to take; stay put. Climbing
   // to the enclosing expression is a deliberate separate action (ArrowUp),
   // not something walking the terms does on its own.
-  if (next) {
-    focusEquationPath(activeEquationIndex.value, next)
+  if (!next) {
+    return
   }
+
+  // Not focusEquationPath: that resets caretSide to 'after', which would
+  // undo the very side-flip this step may just have produced.
+  state.focusedPath = next.path
+  state.selection = collapseSelection(next.path)
+  state.caretSide = next.side
+  numberEdit.value = null
+  focusSurface()
 }
 
 function selectParent(): boolean {
@@ -1098,6 +1107,7 @@ async function copyMathJson() {
               class="equation-field"
               :model-value="equationState.ast"
               :focused-path="equationState.focusedPath"
+              :caret-side="equationState.caretSide"
               :is-active="index === activeEquationIndex"
               @focus-path="focusEquationPath(index, $event)"
             />
