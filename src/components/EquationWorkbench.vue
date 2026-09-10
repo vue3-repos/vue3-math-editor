@@ -631,21 +631,11 @@ function moveHorizontal(direction: 'forward' | 'backward') {
   const path = resolveCommandPath(state.focusedPath)
   const next = moveLeaf(state.ast, path, direction)
 
+  // At either boundary there's no further leaf to walk to; stay put. Climbing
+  // to the enclosing expression is a deliberate separate action (ArrowUp),
+  // not something walking the terms does on its own.
   if (next) {
     focusEquationPath(activeEquationIndex.value, next)
-    return
-  }
-
-  // At the right-hand boundary: widen the selection to the enclosing
-  // expression so repeated presses reach the root, where +, *, etc. append.
-  // (Backward stops at the leftmost leaf; ← from a composite selection dives
-  // back inside it instead.)
-  if (direction === 'forward') {
-    const parent = parentNodePath(path)
-
-    if (parent) {
-      focusEquationPath(activeEquationIndex.value, parent)
-    }
   }
 }
 

@@ -120,11 +120,13 @@ export function listLeafPaths(root: AstNode): NodePath[] {
   return paths
 }
 
-// Caret-like horizontal movement. Forward steps to the first leaf after the
-// focused node's subtree, returning null at the equation boundary so callers
-// can climb to the enclosing expression instead. Backward from a composite
-// selection dives back into its last contained leaf; from a leaf it steps to
-// the previous leaf.
+// Caret-like horizontal movement. Steps to the first leaf immediately outside
+// the focused node's subtree — after it going forward, before it going
+// backward — treating that subtree as one block to skip over rather than
+// diving into it. Returns null at the equation boundary (the leftmost or
+// rightmost leaf, symmetrically); walking the terms stops there rather than
+// climbing to the enclosing expression, which is a separate, deliberate
+// action (ArrowUp).
 export function moveLeaf(
   root: AstNode,
   path: NodePath,
@@ -153,15 +155,5 @@ export function moveLeaf(
     return direction === 'forward' ? leaves[0] : leaves[leaves.length - 1]
   }
 
-  if (direction === 'forward') {
-    return leaves[last + 1] ?? null
-  }
-
-  const focusedIsLeaf = first === last && pathsEqual(leaves[first], path)
-
-  if (!focusedIsLeaf) {
-    return leaves[last]
-  }
-
-  return leaves[first - 1] ?? null
+  return direction === 'forward' ? leaves[last + 1] ?? null : leaves[first - 1] ?? null
 }
