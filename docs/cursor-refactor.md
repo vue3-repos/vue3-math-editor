@@ -1,6 +1,6 @@
 # Cursor refactor: design record
 
-_Recorded 2026-09-23. Status: accepted; implementation in progress on `refactor/cursor-model`._
+_Recorded 2026-09-23. Status: accepted; implementation in progress on `refactor/cursor-model` (steps 1–2 done)._
 
 ## Background
 
@@ -74,13 +74,20 @@ Remove highlighting completely. The editor is **cursor-only**, on a new editing 
    A faint box round the cursor's current row may be derived from the cursor, but it
    never drives the cursor.
 
-### Open questions and chosen defaults
+### Representation decisions
 
-| # | Question | Default adopted | Revisit when |
-|---|---|---|---|
-| 1 | Is `ab` one identifier or `a·b`? | One atom per letter; the parser treats consecutive letters as implicit multiplication, except known function names (`FUNCTION_REGISTRY`) | Step 2 (parser) |
-| 2 | How is `a-b-c` represented? | Undecided: `Subtract` chain vs `Add` + `Negate` | Step 2 (parser) |
-| 3 | Superscripts | A `sup` atom attaches to the atom before it at parse time (MathLive style); there is no `Power` atom with a base row | Step 2 if parsing gets awkward |
+Settled in step 2 (`src/editor/parse.ts`):
+
+| # | Question | Decision |
+|---|---|---|
+| 1 | Is `ab` one identifier or `a·b`? | One symbol atom per typed letter; consecutive letters are implicit multiplication (`xy` → x·y). A symbol whose value is a whole word (e.g. `alpha`, inserted by a command) is one identifier. Function names are `function` atoms created by the editing commands (step 4), never guessed from letters by the parser, so `cost` is not `cos(t)`. A digit after a letter is also implicit multiplication (`x2` → x·2). |
+| 2 | How is `a-b-c` represented? | A left-associative binary `Subtract` chain: `a-b-c` → Subtract(Subtract(a,b),c), `a+b-c` → Subtract(Add(a,b),c). `+` and `·` runs are flattened into one `Add` / `Multiply`. A leading minus negates the whole following term: `-2x` → Negate(Multiply(2,x)). |
+| 3 | Superscripts | A `superscript` atom attaches to the factor before it (`x^2` → Power(x,2)); with nothing before it, the base is a `Placeholder`. `sin^2(x)` → Power(sin(x), 2). |
+
+The parser never throws. Empty rows and missing operands become `Placeholder`, and
+glyphs it cannot place (an unknown symbol, a comma outside function brackets, a
+malformed number) are skipped and returned as diagnostics tied to the atom's id, so
+the UI can mark them.
 
 ## Keep / replace / delete
 
