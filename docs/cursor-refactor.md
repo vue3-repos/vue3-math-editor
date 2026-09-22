@@ -1,6 +1,6 @@
 # Cursor refactor: design record
 
-_Recorded 2026-09-23. Status: accepted; implementation in progress on `refactor/cursor-model` (steps 1–2 done)._
+_Recorded 2026-09-23. Status: accepted; implementation in progress on `refactor/cursor-model` (steps 1–3 done)._
 
 ## Background
 
@@ -88,6 +88,27 @@ The parser never throws. Empty rows and missing operands become `Placeholder`, a
 glyphs it cannot place (an unknown symbol, a comma outside function brackets, a
 malformed number) are skipped and returned as diagnostics tied to the atom's id, so
 the UI can mark them.
+
+### Rendering and caret notes (step 3)
+
+- `renderers/layoutLatex.ts` wraps every atom in `\htmlData{atom=<id>}` and every row in
+  `\htmlData{row=<path>}` (paths encoded as `r/2.num/0.sup`). Operators are wrapped as
+  `\mathbin{…}` / `\mathrel{…}` / `\mathpunct{…}` so KaTeX keeps TeX spacing. A
+  superscript is attached to the previous atom's LaTeX (`{base}^{…}`), so the exponent
+  sits against the real base.
+- `editor/caretGeometry.ts` measures *painted* bounds, not span boxes. KaTeX puts the
+  inter-atom space inside the previous atom's span, pads fractions with
+  `.nulldelimiter` spans, uses zero-height `.vlist` rows and clips huge radical SVGs,
+  so it unions leaf rects and skips spacing, struts and padding.
+- A gap's caret sits midway between the neighbouring atoms. Its height follows the
+  adjacent text, not a tall neighbour. In an empty row there is no caret line; the
+  active placeholder is highlighted and blinks instead.
+- A click goes to the innermost row whose painted box contains the point, at the gap
+  nearest the click's x. ↑/↓ go to the gap nearest the caret's current x.
+- `components/MathField.vue` handles only navigation (arrow keys, Home/End, click) and
+  emits `update:cursor`. Other keys bubble up to the parent for step 4.
+- The development page is `playground.html` (under `npm run dev`, open
+  `/playground.html`). It is not part of the production build.
 
 ## Keep / replace / delete
 
