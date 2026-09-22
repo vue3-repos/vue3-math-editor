@@ -1,0 +1,226 @@
+// DOM geometry for the cursor: where to draw the caret for a cursor, and
+// which cursor a click lands on. Works on KaTeX output produced from
+// renderers/layoutLatex.ts, where every atom carries data-atom=<id> and
+// every row data-row=<encoded path>.
+//
+// This is the only place the editor reads the DOM, and it only reads it: the
+// cursor itself always lives in the model (cursor.ts).
+
+import type { Cursor } from './cursor'
+import { type Atom, type Row, type RowPath, getRow } from './layout'
+import { decodeRowPath, encodeRowPath } from '../renderers/layoutLatex'
+
+export interface Bounds {
+  left: number
+  top: number
+  right: number
+  bottom: number
+}
+
+// ---------------------------------------------------------------------------
+// Painted bounds
+// ---------------------------------------------------------------------------
+
+// KaTeX span boxes don't match what is painted:
+// - inter-atom spacing is an `.mspace` margin placed *inside* the previous
+//   atom's span, so an atom's own box includes the gap after it;
+// - fraction and script rows are zero-height `.vlist > span` markers shifted
+//   with `position: relative`, so ancestors are shorter than their content;
+// - radical signs are huge SVGs clipped by an `overflow: hidden` ancestor;
+// - fractions carry invisible `.nulldelimiter` padding on each side.
+// So measure leaves only, skip spacing, struts and padding, and stop at
+// clipping ancestors (whose own box is the visible, clipped size).
+
+const SKIP_CLASSES = ['mspace', 'strut', 'pstrut', 'vlist-s', 'nulldelimiter']
+
+function clipsOverflow(el: Element): boolean {
+  const style = window.getComputedStyle(el)
+  return style.overflow === 'hidden' || style.overflowX === 'hidden' || style.overflowY === 'hidden'
+}
+
+export function paintedBounds(target: Element): Bounds | null {
+  const bounds: Bounds = { left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity }
+
+  const grow = (rect: DOMRect) => {
+    if (rect.width === 0 && rect.height === 0) return
+    bounds.left = Math.min(bounds.left, rect.left)
+    bounds.top = Math.min(bounds.top, rect.top)
+    bounds.right = Math.max(bounds.right, rect.right)
+    bounds.bottom = Math.max(bounds.bottom, rect.bottom)
+  }
+
+  const visit = (el: Element) => {
+    if (SKIP_CLASSES.some((name) => el.classList.contains(name))) return
+
+    if (el.children.length === 0 || clipsOverflow(el)) {
+      grow(el.getBoundingClientRect())
+      return
+    }
+
+    for (const child of Array.from(el.children)) visit(child)
+  }
+
+  visit(target)
+
+  return Number.isFinite(bounds.left) ? bounds : null
+}
+
+// ---------------------------------------------------------------------------
+// Lookup
+// ---------------------------------------------------------------------------
+
+function atomElement(container: Element, atom: Atom): Element | null {
+  return container.querySelector(`[data-atom="${atom.id}"]`)
+}
+
+function rowElement(container: Element, path: RowPath): Element | null {
+  return container.querySelector(`[data-row="${encodeRowPath(path)}"]`)
+}
+
+function atomBounds(container: Element, atom: Atom | undefined): Bounds | null {
+  if (!atom) return null
+  const el = atomElement(container, atom)
+  return el ? paintedBounds(el) : null
+}
+
+const isTextLike = (atom: Atom | undefined) => atom?.kind === 'symbol' || atom?.kind === 'function'
+
+// ---------------------------------------------------------------------------
+// Gap geometry
+// ---------------------------------------------------------------------------
+
+export interface GapGeometry {
+  // Client coordinates.
+  x: number
+  top: number
+  bottom: number
+  // The gap is an empty row, shown as a placeholder box.
+  placeholder: boolean
+}
+
+// Where the gap at `offset` in the row at `path` is painted.
+export function gapGeometry(
+  container: Element,
+  root: Row,
+  path: RowPath,
+  offset: number,
+): GapGeometry | null {
+  const row = getRow(root, path)
+  if (!row) return null
+
+  if (row.length === 0) {
+    // Empty row: the gap is the placeholder itself.
+    const el = rowElement(container, path)
+    const box = el ? paintedBounds(el) : null
+    return box
+      ? { x: (box.left + box.right) / 2, top: box.top, bottom: box.bottom, placeholder: true }
+      : null
+  }
+
+  const before = row[offset - 1]
+  const after = row[offset]
+  const beforeBox = atomBounds(container, before)
+  const afterBox = atomBounds(container, after)
+
+  let x: number
+  if (beforeBox && afterBox) x = (beforeBox.right + afterBox.left) / 2
+  else if (beforeBox) x = beforeBox.right + 1
+  else if (afterBox) x = afterBox.left - 1
+  else return null
+
+  // Height: follow the text around the gap rather than a tall neighbour
+  // (the caret beside a fraction is text-height, centred on the baseline).
+  const vertical =
+    [before, after].filter(isTextLike).map((atom) => atomBounds(container, atom))[0] ??
+    atomBounds(container, row.find(isTextLike)) ??
+    beforeBox ??
+    afterBox!
+
+  return { x, top: vertical.top, bottom: vertical.bottom, placeholder: false }
+}
+
+export interface CaretBox {
+  // Relative to the container's padding box, including its scroll offset,
+  // ready to use as absolute-position styles.
+  left: number
+  top: number
+  height: number
+  // The cursor is in an empty row. The editor shows the active placeholder
+  // instead of drawing a caret line through it.
+  placeholder: boolean
+}
+
+export function caretBox(container: HTMLElement, root: Row, cursor: Cursor): CaretBox | null {
+  const gap = gapGeometry(container, root, cursor.path, cursor.offset)
+  if (!gap) return null
+
+  const base = container.getBoundingClientRect()
+  const minHeight = 14
+
+  const height = Math.max(minHeight, gap.bottom - gap.top)
+  const top = (gap.top + gap.bottom) / 2 - height / 2
+
+  return {
+    left: gap.x - base.left + container.scrollLeft,
+    top: top - base.top + container.scrollTop,
+    height,
+    placeholder: gap.placeholder,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Hit testing
+// ---------------------------------------------------------------------------
+
+// The offset in the row at `path` whose gap is nearest to clientX.
+export function nearestOffset(
+  container: Element,
+  root: Row,
+  path: RowPath,
+  clientX: number,
+): number {
+  const row = getRow(root, path)
+  if (!row) return 0
+
+  let best = 0
+  let bestDistance = Infinity
+
+  for (let offset = 0; offset <= row.length; offset++) {
+    const gap = gapGeometry(container, root, path, offset)
+    if (!gap) continue
+
+    const distance = Math.abs(gap.x - clientX)
+    if (distance < bestDistance) {
+      best = offset
+      bestDistance = distance
+    }
+  }
+
+  return best
+}
+
+// The cursor a click at (clientX, clientY) should place: the gap nearest to
+// the click in the innermost row whose painted box contains it, or in the
+// root row if none does.
+export function hitTest(container: Element, root: Row, clientX: number, clientY: number): Cursor {
+  const slack = 2
+  let bestPath: RowPath = []
+
+  for (const el of Array.from(container.querySelectorAll('[data-row]'))) {
+    const path = decodeRowPath(el.getAttribute('data-row'))
+    if (!path || path.length <= bestPath.length || !getRow(root, path)) continue
+
+    const box = paintedBounds(el)
+    if (
+      box &&
+      clientX >= box.left - slack &&
+      clientX <= box.right + slack &&
+      clientY >= box.top - slack &&
+      clientY <= box.bottom + slack
+    ) {
+      bestPath = path
+    }
+  }
+
+  return { path: bestPath, offset: nearestOffset(container, root, bestPath, clientX) }
+}
