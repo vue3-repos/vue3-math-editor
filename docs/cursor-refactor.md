@@ -83,7 +83,7 @@ Settled in step 2 (`src/editor/parse.ts`):
 
 | # | Question | Decision |
 |---|---|---|
-| 1 | Is `ab` one identifier or `a·b`? | One symbol atom per typed letter; consecutive letters are implicit multiplication (`xy` → x·y). A symbol whose value is a whole word (e.g. `alpha`, inserted by a command) is one identifier. Function names are `function` atoms created by the editing commands (step 4), never guessed from letters by the parser, so `cost` is not `cos(t)`. A digit after a letter is also implicit multiplication (`x2` → x·2). |
+| 1 | Is `ab` one identifier or `a·b`? | One identifier. Letters, digits and underscores typed with no operator between them form one name (`Vm_init`, `x2`, `ab`); products of names need `*`. A name that is exactly a function's spelling is that function. Revised after step 4; see *Multi-character names* below. |
 | 2 | How is `a-b-c` represented? | A left-associative binary `Subtract` chain: `a-b-c` → Subtract(Subtract(a,b),c), `a+b-c` → Subtract(Add(a,b),c). `+` and `·` runs are flattened into one `Add` / `Multiply`. A leading minus negates the whole following term: `-2x` → Negate(Multiply(2,x)). |
 | 3 | Superscripts | A `superscript` atom attaches to the factor before it (`x^2` → Power(x,2)); with nothing before it, the base is a `Placeholder`. `sin^2(x)` → Power(sin(x), 2). |
 
@@ -92,10 +92,12 @@ glyphs it cannot place (an unknown symbol, a comma outside function brackets, a
 malformed number) are skipped and returned as diagnostics tied to the atom's id, so
 the UI can mark them.
 
-### Multi-character names (experimental, branch `experiment/multi-letter-names`)
+### Multi-character names
 
-Under trial: this replaces decision 1 in the table above ("one symbol atom per typed
-letter; `xy` is x·y") if adopted.
+Adopted after trying it on a branch. This replaced the original decision 1 ("one symbol
+atom per typed letter; `xy` is x·y"), and function names are no longer converted as they
+are typed. The user-facing rules and their rationale are in
+[Writing equations](writing-equations.md).
 
 - A run of letters, digits and underscores that starts with a letter is one name:
   `Vm`, `Vm_init`, `x2`, and `ab` too. Multiplying names needs an explicit operator,
