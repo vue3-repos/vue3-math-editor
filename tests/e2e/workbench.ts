@@ -40,6 +40,25 @@ export class Workbench {
     return this.line(line).locator('.caret')
   }
 
+  // The active line's selection, e.g. "root 2–5"; absent when nothing is
+  // selected.
+  selection(): Locator {
+    return this.page.locator('[data-role="selection"]')
+  }
+
+  // The drawn selection highlight in a line.
+  selectionHighlight(line = 0): Locator {
+    return this.line(line).locator('.selection')
+  }
+
+  // Drag with the mouse from one point to another.
+  async drag(from: { x: number; y: number }, to: { x: number; y: number }): Promise<void> {
+    await this.page.mouse.move(from.x, from.y)
+    await this.page.mouse.down()
+    await this.page.mouse.move(to.x, to.y, { steps: 6 })
+    await this.page.mouse.up()
+  }
+
   async focusLine(index = 0): Promise<void> {
     await this.line(index).focus()
     await expect(this.line(index)).toBeFocused()
@@ -154,11 +173,17 @@ export class Workbench {
       : null
   }
 
-  // Click at a fraction of the way across (fx) and down (fy) a box.
-  async clickIn(box: Box, fx: number, fy = 0.5): Promise<void> {
-    await this.page.mouse.click(
-      box.left + (box.right - box.left) * fx,
-      box.top + (box.bottom - box.top) * fy,
-    )
+  // A point a fraction of the way across (fx) and down (fy) a box.
+  pointIn(box: Box, fx: number, fy = 0.5): { x: number; y: number } {
+    return { x: box.left + (box.right - box.left) * fx, y: box.top + (box.bottom - box.top) * fy }
+  }
+
+  // Click at a fraction of the way across (fx) and down (fy) a box,
+  // optionally holding Shift.
+  async clickIn(box: Box, fx: number, fy = 0.5, { shift = false } = {}): Promise<void> {
+    const { x, y } = this.pointIn(box, fx, fy)
+    if (shift) await this.page.keyboard.down('Shift')
+    await this.page.mouse.click(x, y)
+    if (shift) await this.page.keyboard.up('Shift')
   }
 }

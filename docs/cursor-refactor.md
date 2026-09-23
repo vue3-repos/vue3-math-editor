@@ -1,6 +1,6 @@
 # Cursor refactor: design record
 
-_Recorded 2026-09-23. Status: accepted; implementation in progress on `refactor/cursor-model` (steps 1–4 done)._
+_Recorded 2026-09-23. Status: accepted; implementation in progress on `refactor/cursor-model` (steps 1–4 and selection done)._
 
 ## Background
 
@@ -134,6 +134,33 @@ Handled by the workbench, from keys `MathField` leaves unused: Enter (new line);
 with no row above/below, and Alt+↑/↓ (previous/next line); Backspace in an empty
 line (remove it); Ctrl/Cmd+Z and Shift+Z / Y (undo/redo, one step per edit).
 
+### Selection
+
+`editor/selection.ts`. The state carries an optional `anchor` beside the `cursor`. The
+selection is always a range of whole atoms in one row: the innermost row that contains
+both ends. An end that lies inside an atom of that row takes the whole atom, so dragging
+from a numerator out into the main row selects the whole fraction.
+
+| Input | Behaviour |
+|---|---|
+| Shift+← / → | Extend one whole atom at a time along the cursor's row (a fraction or root is taken in one step, never entered); at the end of a row, take the enclosing structure. |
+| Shift+Home / End, Ctrl/Cmd+A | Extend to the start / end of the equation; select everything. |
+| Drag, Shift+click | Select from the drag start (or the cursor) to the pointer. |
+| ← / → | Collapse to the start / end of the selection. ↑/↓ drop it and move. |
+| Escape | Clear it, leaving the cursor where it is. |
+| Typing | Replaces the selection. Backspace / Delete remove it. Space collapses to its end. `)` collapses to its end, then closes the group, so the selection stays inside. |
+| `/`, `\frac`, toolbar fraction | The selection becomes the numerator (a single bracketed group loses its brackets); cursor to the denominator. |
+| `(`, `\|`, `\abs` | Bracket it; cursor after. |
+| `^` | One atom gets an exponent directly; several are bracketed first: `(a+b)^□`. |
+| `\sqrt` / `\root` | Radicand; cursor after the root / in the index. |
+| `\sin` etc. | The argument: `sin(selection)`; cursor after. |
+| `\dd` | The expression; cursor in the variable. |
+
+The selection is drawn as a translucent box behind the equation (`selectionBox` in
+`caretGeometry.ts`), like the caret overlay, so it never changes the KaTeX layout. The
+caret is hidden while something is selected. Selection changes are not undo steps, but
+each undo step restores the selection that existed before the edit.
+
 ### Testing
 
 - **Unit tests** (Vitest, `npm test`): `tests/*.spec.ts`. Pure model code (cursor
@@ -175,8 +202,8 @@ multi-line list, command mode, toolbar and output panels.
 
 ### Possible next steps
 
-- Selection (Shift+arrows, drag) as `anchor` + `cursor` in one row, with `/`, `(` and
-  `\sqrt` wrapping the selection; copy and paste.
+- Copy, cut and paste of a selection (as layout atoms within the editor, and as LaTeX
+  or MathJSON to other apps).
 - Subscripts (`_`), if needed for variable names like x₁.
 - Marking parser diagnostics on the offending atom (each diagnostic carries its
   `atomId`).

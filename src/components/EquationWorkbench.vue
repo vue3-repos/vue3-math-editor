@@ -14,7 +14,7 @@ import Card from 'primevue/card'
 import Divider from 'primevue/divider'
 import Tag from 'primevue/tag'
 
-import MathField from './MathField.vue'
+import MathField, { type NavigationState } from './MathField.vue'
 import {
   type Command,
   type EditorState,
@@ -29,8 +29,9 @@ import {
   insertSymbol,
   namedCommand,
 } from '../editor/commands'
-import { type Cursor, cursorAtEnd, describeCursor } from '../editor/cursor'
+import { cursorAtEnd, describeCursor } from '../editor/cursor'
 import { parseRow } from '../editor/parse'
+import { describeSelection, selectionOf } from '../editor/selection'
 import { astToLatex } from '../renderers/latex'
 import { renderMathJson } from '../renderers/mathjson'
 import { astToContentMathML } from '../renderers/mathml'
@@ -110,8 +111,9 @@ function handleEdit(index: number, next: EditorState) {
   setEquation(index, next)
 }
 
-function handleCursor(index: number, cursor: Cursor) {
-  setEquation(index, { ...equations.value[index], cursor })
+// Cursor moves and selection changes: not recorded in undo history.
+function handleNavigate(index: number, { cursor, anchor }: NavigationState) {
+  setEquation(index, { ...equations.value[index], cursor, anchor })
 }
 
 // Run a command on the active line (toolbar buttons, command mode).
@@ -153,7 +155,7 @@ function removeActiveLine() {
   activeIndex.value = Math.max(0, activeIndex.value - 1)
   // Continue at the end of the line above.
   const state = active()
-  setEquation(activeIndex.value, { ...state, cursor: cursorAtEnd(state.root) })
+  setEquation(activeIndex.value, { ...state, cursor: cursorAtEnd(state.root), anchor: null })
   focusActive()
 }
 
@@ -290,6 +292,10 @@ const latex = computed(() => (ast.value ? astToLatex(ast.value) : ''))
 const mathjson = computed(() => (ast.value ? renderMathJson(ast.value) : ''))
 const mathml = computed(() => (ast.value ? astToContentMathML(ast.value).trim() : ''))
 const cursorLabel = computed(() => describeCursor(active().cursor))
+const selectionLabel = computed(() => {
+  const selection = selectionOf(active())
+  return selection ? describeSelection(selection) : null
+})
 
 const isCopyingMathJson = ref(false)
 
@@ -434,8 +440,9 @@ async function copyMathJson() {
               class="equation-field"
               :model-value="equation.root"
               :cursor="equation.cursor"
+              :anchor="equation.anchor ?? null"
               :active="index === activeIndex"
-              @update:cursor="handleCursor(index, $event)"
+              @navigate="handleNavigate(index, $event)"
               @edit="handleEdit(index, $event)"
             />
           </div>
@@ -446,6 +453,9 @@ async function copyMathJson() {
         </div>
         <p v-else class="focus-meta">
           Cursor: <span data-role="cursor">{{ cursorLabel }}</span>
+          <template v-if="selectionLabel">
+            · Selection: <span data-role="selection">{{ selectionLabel }}</span>
+          </template>
         </p>
 
         <ul v-if="diagnostics.length" class="diagnostics" data-role="diagnostics">
@@ -457,6 +467,13 @@ async function copyMathJson() {
           ><kbd>↓</kbd> numerator/denominator, else previous/next line · <kbd>Home</kbd
           ><kbd>End</kbd> start/end · <kbd>Tab</kbd> next empty slot · <kbd>Space</kbd> step out of
           a fraction, exponent or bracket · <kbd>Enter</kbd> new line
+        </p>
+        <p class="key-hint">
+          Select with <kbd>Shift</kbd>+<kbd>←</kbd><kbd>→</kbd>, <kbd>Shift</kbd>+<kbd>Home</kbd
+          ><kbd>End</kbd>, <kbd>Ctrl</kbd>+<kbd>A</kbd> or by dragging · <code>/</code>,
+          <code>^</code>, <code>(</code>, <code>|</code>, <code>\sqrt</code>, <code>\sin</code>, …
+          or a toolbar button then wraps the selection · typing replaces it · <kbd>Esc</kbd> clears
+          it
         </p>
         <p class="key-hint">
           Type letters, numbers and <code>+ − * = ,</code> where the caret is · <code>/</code> makes

@@ -1,107 +1,16 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  type EditorState,
   deleteBackward,
   emptyState,
   insertFraction,
   insertFunction,
   namedCommand,
 } from '../src/editor/commands'
-import { type Cursor, isValidCursor, moveLeft, moveRight } from '../src/editor/cursor'
+import { type Cursor, isValidCursor, moveRight } from '../src/editor/cursor'
 import { commandForKey } from '../src/editor/keymap'
-import { type Row, type RowPath, childRows, rowPathsEqual } from '../src/editor/layout'
 import { parseRow } from '../src/editor/parse'
-import { getFunctionDefinition } from '../src/registry/nodes'
-import { astToMathJson } from '../src/renderers/mathjson'
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-// Press keys. Each argument is either a named key ("Backspace", "Tab",
-// "Shift+Tab", "ArrowLeft", "ArrowRight") or text typed one character at a
-// time.
-function press(state: EditorState, ...parts: string[]): EditorState {
-  for (const part of parts) {
-    const named = /^(Shift\+)?[A-Z][a-z]+([A-Z][a-z]+)?$/.test(part) && part.length > 1
-    const keys = named ? [part] : Array.from(part)
-
-    for (const key of keys) {
-      if (key === 'ArrowLeft' || key === 'ArrowRight') {
-        const move = key === 'ArrowLeft' ? moveLeft : moveRight
-        state = { ...state, cursor: move(state.root, state.cursor) ?? state.cursor }
-        continue
-      }
-
-      const shiftKey = key.startsWith('Shift+')
-      const command = commandForKey({ key: shiftKey ? key.slice(6) : key, shiftKey })
-      if (!command) throw new Error(`No command for key "${key}"`)
-      state = command(state)
-      expect(isValidCursor(state.root, state.cursor), `cursor valid after "${key}"`).toBe(true)
-    }
-  }
-
-  return state
-}
-
-function type(...parts: string[]): EditorState {
-  return press(emptyState(), ...parts)
-}
-
-// A compact text form of the tree with the caret shown as ‸:
-//   fraction [num/den], superscript ^{…}, brackets (…) and |…|,
-//   roots √{…} and √[index]{…}, derivative d{…}/d{…}, functions by name.
-function show(state: EditorState): string {
-  const render = (r: Row, path: RowPath): string => {
-    const here = rowPathsEqual(path, state.cursor.path)
-    let out = ''
-
-    for (let i = 0; i <= r.length; i++) {
-      if (here && i === state.cursor.offset) out += '‸'
-      if (i === r.length) break
-
-      const atom = r[i]
-      const child = (branch: string) =>
-        render(childRows(atom).find(([name]) => name === branch)![1], [
-          ...path,
-          { atom: i, branch: branch as RowPath[number]['branch'] },
-        ])
-
-      switch (atom.kind) {
-        case 'symbol':
-          out += atom.value
-          break
-        case 'function':
-          out += getFunctionDefinition(atom.name)?.latexName ?? atom.name
-          break
-        case 'fraction':
-          out += `[${child('num')}/${child('den')}]`
-          break
-        case 'superscript':
-          out += `^{${child('sup')}}`
-          break
-        case 'group':
-          out += atom.open === '|' ? `|${child('body')}|` : `(${child('body')})`
-          break
-        case 'root':
-          out += atom.index ? `√[${child('index')}]{${child('body')}}` : `√{${child('body')}}`
-          break
-        case 'derivative':
-          out += `d{${child('expr')}}/d{${child('variable')}}`
-          break
-      }
-    }
-
-    return out
-  }
-
-  return render(state.root, [])
-}
-
-function json(state: EditorState): unknown {
-  return astToMathJson(parseRow(state.root).ast)
-}
+import { json, press, show, type } from './editorHelpers'
 
 // ---------------------------------------------------------------------------
 // Typing

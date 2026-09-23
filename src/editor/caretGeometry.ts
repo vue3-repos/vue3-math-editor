@@ -245,3 +245,53 @@ export function hitTest(container: Element, root: Row, clientX: number, clientY:
 
   return { path: bestPath, offset: nearestOffset(container, root, bestPath, clientX) }
 }
+
+// ---------------------------------------------------------------------------
+// Selection
+// ---------------------------------------------------------------------------
+
+export interface SelectionBox {
+  // Relative to the container, like CaretBox.
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
+// The painted extent of the selected atoms (one box: a selection is always a
+// contiguous range within one row).
+export function selectionBox(
+  container: HTMLElement,
+  root: Row,
+  selection: { path: RowPath; start: number; end: number },
+): SelectionBox | null {
+  const row = getRow(root, selection.path)
+  if (!row) return null
+
+  let bounds: Bounds | null = null
+
+  for (const atom of row.slice(selection.start, selection.end)) {
+    const box = atomBounds(container, atom)
+    if (!box) continue
+    bounds = bounds
+      ? {
+          left: Math.min(bounds.left, box.left),
+          top: Math.min(bounds.top, box.top),
+          right: Math.max(bounds.right, box.right),
+          bottom: Math.max(bounds.bottom, box.bottom),
+        }
+      : box
+  }
+
+  if (!bounds) return null
+
+  const base = container.getBoundingClientRect()
+  const pad = 2
+
+  return {
+    left: bounds.left - base.left + container.scrollLeft - pad,
+    top: bounds.top - base.top + container.scrollTop - pad,
+    width: bounds.right - bounds.left + pad * 2,
+    height: bounds.bottom - bounds.top + pad * 2,
+  }
+}

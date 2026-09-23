@@ -8,6 +8,10 @@
 // Commands only ever insert or remove atoms at the cursor and move the
 // cursor; the semantic tree is re-derived by parse.ts after every change, so
 // there is no operator-precedence logic here.
+//
+// With a selection (see selection.ts), typing replaces it, Backspace/Delete
+// remove it, and structure commands wrap it: "/" makes it the numerator,
+// "(" and "|" bracket it, \sqrt makes it the radicand, \sin the argument, …
 
 import { type Cursor, allPositions, cursorAtStart, cursorsEqual } from './cursor'
 import {
@@ -28,11 +32,15 @@ import {
   superscript,
   symbol,
 } from './layout'
+import { collapseSelection, selectionOf } from './selection'
 import { FUNCTION_REGISTRY, getFunctionDefinition } from '../registry/nodes'
 
 export interface EditorState {
   root: Row
   cursor: Cursor
+  // Other end of the selection (see selection.ts); null/absent when nothing
+  // is selected. Commands that edit always return a state without one.
+  anchor?: Cursor | null
 }
 
 export type Command = (state: EditorState) => EditorState
@@ -124,6 +132,64 @@ function unwrap(state: EditorState, owner: Owner, cursorOffset: number): EditorS
   })
 }
 
+// ---------------------------------------------------------------------------
+// Selection helpers
+// ---------------------------------------------------------------------------
+
+// Remove the selected atoms, leaving the cursor where they were. Without a
+// selection, returns the state unchanged (minus a leftover empty anchor).
+function clearSelection(state: EditorState): EditorState {
+  const selection = selectionOf(state)
+
+  if (!selection) {
+    return state.anchor ? { root: state.root, cursor: state.cursor } : state
+  }
+
+  return splice(state, selection.path, selection.start, selection.end - selection.start, [], {
+    path: selection.path,
+    offset: selection.start,
+  })
+}
+
+// A bracketed operand loses its brackets when it becomes a numerator:
+// (x+1)/ gives x+1 over □.
+function withoutOuterParens(content: Row): Row {
+  const only = content[0]
+  return content.length === 1 && only.kind === 'group' && only.open === '(' ? only.body : content
+}
+
+// A structure built around the selection, or an empty one at the cursor.
+// With a selection, the selected atoms become `build(selection)` and the
+// cursor goes to the new atom's `wrappedInto` row (or just `after` it);
+// without one, `build([])` is inserted and the cursor goes to `emptyInto`.
+function wrapSelection(
+  build: (content: Row) => Atom,
+  wrappedInto: BranchName | 'after',
+  emptyInto: BranchName,
+): Command {
+  return (state) => {
+    const selection = selectionOf(state)
+
+    if (!selection) {
+      const base = clearSelection(state)
+      const { path, offset } = base.cursor
+      return splice(base, path, offset, 0, [build([])], {
+        path: [...path, { atom: offset, branch: emptyInto }],
+        offset: 0,
+      })
+    }
+
+    const { path, start, end } = selection
+    const content = requireRow(state.root, path).slice(start, end)
+    const cursor: Cursor =
+      wrappedInto === 'after'
+        ? { path, offset: start + 1 }
+        : { path: [...path, { atom: start, branch: wrappedInto }], offset: 0 }
+
+    return splice(state, path, start, end - start, [build(content)], cursor)
+  }
+}
+
 function displayName(name: string): string {
   return getFunctionDefinition(name)?.latexName ?? name
 }
@@ -176,7 +242,8 @@ function recogniseFunctionName(state: EditorState): EditorState {
 
 // Insert one glyph (digit, letter, operator, …) at the cursor.
 export function insertSymbol(value: string): Command {
-  return (state) => {
+  return (current) => {
+    const state = clearSelection(current)
     const { path, offset } = state.cursor
     const next = splice(state, path, offset, 0, [symbol(value)], { path, offset: offset + 1 })
     return /^[A-Za-z]$/.test(value) ? recogniseFunctionName(next) : next
@@ -185,7 +252,8 @@ export function insertSymbol(value: string): Command {
 
 // Insert a structure atom at the cursor and move into one of its rows.
 export function insertStructure(atom: Atom, branch: BranchName): Command {
-  return (state) => {
+  return (current) => {
+    const state = clearSelection(current)
     const { path, offset } = state.cursor
     return splice(state, path, offset, 0, [atom], {
       path: [...path, { atom: offset, branch }],
@@ -194,23 +262,31 @@ export function insertStructure(atom: Atom, branch: BranchName): Command {
   }
 }
 
-// "/": the operand just before the cursor (everything back to the previous
-// operator) becomes the numerator, and the cursor goes to the denominator.
-// A bracketed operand loses its brackets: (x+1)/ gives x+1 over □. With
-// nothing before the cursor, both rows start empty and the cursor goes to
-// the numerator.
-export const insertFraction: Command = (state) => {
+// \frac and the toolbar button: the selection becomes the numerator (cursor
+// to the denominator); without one, an empty fraction (cursor to the
+// numerator).
+export const fractionOfSelection: Command = wrapSelection(
+  (content) => fraction(withoutOuterParens(content), []),
+  'den',
+  'num',
+)
+
+// "/": the selection, or else the operand just before the cursor (everything
+// back to the previous operator), becomes the numerator, and the cursor goes
+// to the denominator. A bracketed operand loses its brackets: (x+1)/ gives
+// x+1 over □. With nothing before the cursor, both rows start empty and the
+// cursor goes to the numerator.
+export const insertFraction: Command = (current) => {
+  if (selectionOf(current)) return fractionOfSelection(current)
+
+  const state = clearSelection(current)
   const { path, offset } = state.cursor
-  const current = requireRow(state.root, path)
+  const here = requireRow(state.root, path)
 
   let start = offset
-  while (start > 0 && !isOperator(current[start - 1])) start--
+  while (start > 0 && !isOperator(here[start - 1])) start--
 
-  let numerator = current.slice(start, offset)
-  const only = numerator[0]
-  if (numerator.length === 1 && only.kind === 'group' && only.open === '(') {
-    numerator = only.body
-  }
+  const numerator = withoutOuterParens(here.slice(start, offset))
 
   const branch: BranchName = numerator.length > 0 ? 'den' : 'num'
   return splice(state, path, start, offset - start, [fraction(numerator, [])], {
@@ -220,12 +296,26 @@ export const insertFraction: Command = (state) => {
 }
 
 // "^": into the superscript right after the cursor, or the end of the one
-// right before it, or a new one.
-export const insertSuperscript: Command = (state) => {
+// right before it, or a new one. With a selection, the selection gets the
+// exponent: a single atom directly, several in brackets ((a+b)^□).
+export const insertSuperscript: Command = (current) => {
+  const selection = selectionOf(current)
+
+  if (selection) {
+    const { path, start, end } = selection
+    const content = requireRow(current.root, path).slice(start, end)
+    const base = content.length === 1 ? content : [group(content, '(')]
+    return splice(current, path, start, end - start, [...base, superscript()], {
+      path: [...path, { atom: start + base.length, branch: 'sup' }],
+      offset: 0,
+    })
+  }
+
+  const state = clearSelection(current)
   const { path, offset } = state.cursor
-  const current = requireRow(state.root, path)
-  const after = current[offset]
-  const before = current[offset - 1]
+  const here = requireRow(state.root, path)
+  const after = here[offset]
+  const before = here[offset - 1]
 
   if (after?.kind === 'superscript') {
     return {
@@ -260,9 +350,11 @@ function enclosingGroup(
 // group, anything after the cursor moves out with it, so "(x|+1" + ")" gives
 // "(x)+1".
 function closeGroup(open: GroupDelimiter): Command {
-  return (state) => {
+  return (current) => {
+    // A selection stays inside the brackets being closed.
+    const state = current.anchor ? collapseSelection(current, 'end') : current
     const found = enclosingGroup(state, open)
-    if (!found) return state
+    if (!found) return current
 
     const { owner, depth } = found
     const after: Cursor = { path: owner.rowPath, offset: owner.index + 1 }
@@ -278,13 +370,15 @@ function closeGroup(open: GroupDelimiter): Command {
   }
 }
 
-export const openParen: Command = (state) => insertStructure(group([], '('), 'body')(state)
+// "(": an empty group with the cursor inside, or brackets round the selection.
+export const openParen: Command = wrapSelection((content) => group(content, '('), 'after', 'body')
 
 export const closeParen: Command = closeGroup('(')
 
 // "|" closes the absolute value the cursor is directly inside, otherwise
-// opens a new one.
+// opens a new one; with a selection, puts |…| round it.
 export const absBar: Command = (state) => {
+  if (selectionOf(state)) return insertAbs(state)
   const owner = ownerOf(state)
   if (owner?.atom.kind === 'group' && owner.atom.open === '|') return closeGroup('|')(state)
   return insertStructure(group([], '|'), 'body')(state)
@@ -293,6 +387,7 @@ export const absBar: Command = (state) => {
 // Space: step out of the innermost structure, to just after it
 // (e.g. x^2 + space, then keep typing on the baseline).
 export const exitStructure: Command = (state) => {
+  if (selectionOf(state)) return collapseSelection(state, 'end')
   const owner = ownerOf(state)
   if (!owner) return state
   return { root: state.root, cursor: { path: owner.rowPath, offset: owner.index + 1 } }
@@ -313,6 +408,7 @@ export const exitStructure: Command = (state) => {
 //   first row, remove the structure but keep its content ("(x+1" -> "x+1").
 // - At the start of the equation: nothing (returns the same state).
 export const deleteBackward: Command = (state) => {
+  if (selectionOf(state)) return clearSelection(state)
   const { path, offset } = state.cursor
   const current = requireRow(state.root, path)
 
@@ -367,6 +463,7 @@ export const deleteBackward: Command = (state) => {
 
 // Delete (forward delete): the mirror image of Backspace.
 export const deleteForward: Command = (state) => {
+  if (selectionOf(state)) return clearSelection(state)
   const { path, offset } = state.cursor
   const current = requireRow(state.root, path)
 
@@ -443,8 +540,21 @@ export function nextPlaceholder(direction: 'forward' | 'backward'): Command {
 // ---------------------------------------------------------------------------
 
 // A function head followed by an empty bracket group, cursor inside: sin(□).
+// With a selection, the selection becomes the argument: sin(selection).
 export function insertFunction(name: string): Command {
-  return (state) => {
+  return (current) => {
+    const selection = selectionOf(current)
+
+    if (selection) {
+      const { path, start, end } = selection
+      const content = requireRow(current.root, path).slice(start, end)
+      return splice(current, path, start, end - start, [func(name), group(content, '(')], {
+        path,
+        offset: start + 2,
+      })
+    }
+
+    const state = clearSelection(current)
     const { path, offset } = state.cursor
     return splice(state, path, offset, 0, [func(name), group([], '(')], {
       path: [...path, { atom: offset + 1, branch: 'body' }],
@@ -453,10 +563,21 @@ export function insertFunction(name: string): Command {
   }
 }
 
-export const insertSquareRoot: Command = (state) => insertStructure(root(), 'body')(state)
-export const insertNthRoot: Command = (state) => insertStructure(root([], []), 'index')(state)
-export const insertAbs: Command = (state) => insertStructure(group([], '|'), 'body')(state)
-export const insertDerivative: Command = (state) => insertStructure(derivative(), 'expr')(state)
+// With a selection these wrap it: √(selection) with the cursor after it;
+// the nth root takes it as the radicand with the cursor in the index; |…|;
+// the derivative takes it as the expression with the cursor in the variable.
+export const insertSquareRoot: Command = wrapSelection((content) => root(content), 'after', 'body')
+export const insertNthRoot: Command = wrapSelection(
+  (content) => root(content, []),
+  'index',
+  'index',
+)
+export const insertAbs: Command = wrapSelection((content) => group(content, '|'), 'after', 'body')
+export const insertDerivative: Command = wrapSelection(
+  (content) => derivative(content, []),
+  'variable',
+  'expr',
+)
 
 // The command for "\name". Unknown names insert a named symbol, so
 // "\alpha" gives α and "\speed" an identifier called speed.
@@ -464,7 +585,7 @@ export function namedCommand(name: string): Command {
   switch (name) {
     case 'frac':
     case 'fraction':
-      return insertStructure(fraction(), 'num')
+      return fractionOfSelection
     case 'sqrt':
       return insertSquareRoot
     case 'root':
@@ -483,8 +604,5 @@ export function namedCommand(name: string): Command {
   const spelled = FUNCTION_SPELLINGS.get(name)
   if (spelled) return insertFunction(spelled)
 
-  return (state) => {
-    const { path, offset } = state.cursor
-    return splice(state, path, offset, 0, [symbol(name)], { path, offset: offset + 1 })
-  }
+  return insertSymbol(name)
 }
