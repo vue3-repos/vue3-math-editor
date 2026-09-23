@@ -14,6 +14,12 @@
 
 import { GREEK_NAMES, functionForSpelling, nameRuns, numberRuns } from './identifiers'
 import {
+  CONDITION_OPERATORS,
+  combinedWithEquals,
+  conditionOperator,
+  conditionOperatorForCommand,
+} from './operators'
+import {
   type Atom,
   type Row,
   childRows,
@@ -111,6 +117,13 @@ const OPERATOR_LATEX: Record<string, string> = {
   '*': '\\cdot ',
   '×': '\\times ',
   '−': '-',
+  // < > ≤ ≥ ≠ ∧ ∨ ⊻ ¬ (a trailing space ends a command name)
+  ...Object.fromEntries(
+    CONDITION_OPERATORS.map((op) => [
+      op.symbol,
+      op.latex.startsWith('\\') ? `${op.latex} ` : op.latex,
+    ]),
+  ),
 }
 
 const TEXT_ESCAPES: Record<string, string> = {
@@ -135,7 +148,8 @@ function symbolLatex(value: string): string {
 }
 
 const isOperatorAtom = (atom: Atom | undefined) =>
-  atom?.kind === 'symbol' && /^[+\-−=,·*×]$/.test(atom.value)
+  atom?.kind === 'symbol' &&
+  (/^[+\-−=,·*×]$/.test(atom.value) || conditionOperator(atom.value) !== undefined)
 
 // Plain, readable LaTeX for a row (no editor markup). A name of more than
 // one character is written \mathit{Vm\_init} so LaTeX treats it as one
@@ -363,6 +377,24 @@ class LatexReader {
       case '*':
         atoms.push(symbol('·'))
         return
+      case '=': {
+        // Plain text "<=", ">=", "!=" (and "==") are one operator.
+        const previous = atoms[atoms.length - 1]
+        const value = previous?.kind === 'symbol' ? previous.value : ''
+        const combined = combinedWithEquals(value === '!' ? '¬' : value)
+        if (combined) atoms[atoms.length - 1] = symbol(combined)
+        else if (value !== '=') atoms.push(symbol('='))
+        return
+      }
+      case '!':
+        atoms.push(symbol('¬'))
+        return
+      case '&': {
+        // "&" or "&&" is ∧ (LaTeX tables aren't read).
+        const previous = atoms[atoms.length - 1]
+        if (!(previous?.kind === 'symbol' && previous.value === '∧')) atoms.push(symbol('∧'))
+        return
+      }
       default:
         atoms.push(symbol(char === '−' ? '-' : char))
     }
@@ -458,6 +490,13 @@ class LatexReader {
 
   private readCommand(name: string, atoms: Row): void {
     if (SPACING.has(name)) return
+
+    // \leq, \land, \lnot, … (\not= then reads as ≠, see readChar).
+    const operator = conditionOperatorForCommand(name)
+    if (operator) {
+      atoms.push(symbol(operator.symbol))
+      return
+    }
 
     switch (name) {
       case 'frac':

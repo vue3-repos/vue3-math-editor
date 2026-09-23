@@ -34,6 +34,7 @@ import {
 } from './layout'
 import { collapseSelection, selectionOf } from './selection'
 import { GREEK_NAMES, functionForSpelling } from './identifiers'
+import { combinedWithEquals, conditionOperatorForCommand } from './operators'
 import { getFunctionDefinition } from '../registry/nodes'
 
 export interface EditorState {
@@ -217,6 +218,23 @@ export function insertSymbol(value: string): Command {
     const { path, offset } = state.cursor
     return splice(state, path, offset, 0, [symbol(value)], { path, offset: offset + 1 })
   }
+}
+
+// "=": after "<", ">" or "¬" it combines with it into "≤", "≥" or "≠"
+// (typed <=, >=, !=); otherwise it is an equals sign.
+export const typeEquals: Command = (current) => {
+  if (!selectionOf(current)) {
+    const { path, offset } = current.cursor
+    const before = requireRow(current.root, path)[offset - 1]
+    const combined = before?.kind === 'symbol' ? combinedWithEquals(before.value) : undefined
+
+    if (combined) {
+      const state = { root: current.root, cursor: current.cursor }
+      return splice(state, path, offset - 1, 1, [symbol(combined)], { path, offset })
+    }
+  }
+
+  return insertSymbol('=')(current)
 }
 
 // Insert a structure atom at the cursor and move into one of its rows.
@@ -570,6 +588,9 @@ export function namedCommand(name: string): Command {
     case 'power':
       return insertSuperscript
   }
+
+  const operator = conditionOperatorForCommand(name)
+  if (operator) return insertSymbol(operator.symbol)
 
   const spelled = functionForSpelling(name)
   if (spelled) return insertFunction(spelled)

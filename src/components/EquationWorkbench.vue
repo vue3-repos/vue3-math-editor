@@ -288,6 +288,23 @@ const operatorButtons: ToolButton[] = [
   { latex: '=', title: 'Equals  ( = )', command: insertSymbol('=') },
 ]
 
+// Comparisons and logic, for conditions.
+const conditionButtons: ToolButton[] = [
+  { latex: '<', title: 'Less than  ( < )', command: insertSymbol('<') },
+  { latex: '\\leq', title: 'Less than or equal  ( <= or \\le )', command: insertSymbol('≤') },
+  { latex: '>', title: 'Greater than  ( > )', command: insertSymbol('>') },
+  {
+    latex: '\\geq',
+    title: 'Greater than or equal  ( >= or \\ge )',
+    command: insertSymbol('≥'),
+  },
+  { latex: '\\neq', title: 'Not equal  ( != or \\ne )', command: insertSymbol('≠') },
+  { latex: '\\land', title: 'And  ( & or \\and )', command: insertSymbol('∧') },
+  { latex: '\\lor', title: 'Or  ( \\or )', command: insertSymbol('∨') },
+  { latex: '\\lnot', title: 'Not  ( ! or \\not )', command: insertSymbol('¬') },
+  { latex: '\\veebar', title: 'Exclusive or  ( \\xor )', command: insertSymbol('⊻') },
+]
+
 function buttonHtml(latex: string): string {
   return katex.renderToString(latex, { throwOnError: false, strict: 'ignore' })
 }
@@ -461,6 +478,20 @@ function toggleCopyMenu(event: Event) {
             </button>
           </div>
 
+          <div class="toolbar-group" data-role="condition-buttons">
+            <button
+              v-for="item in conditionButtons"
+              :key="item.title"
+              type="button"
+              class="tool-button tool-button-op"
+              :title="item.title"
+              @mousedown.prevent
+              @click="run(item.command)"
+            >
+              <span v-html="buttonHtml(item.latex)"></span>
+            </button>
+          </div>
+
           <div class="toolbar-group">
             <Button
               icon="pi pi-undo"
@@ -575,12 +606,13 @@ function toggleCopyMenu(event: Event) {
           LaTeX for other apps; pastes LaTeX or plain text such as <code>(x+1)/2</code>)
         </p>
         <p class="key-hint">
-          Type letters, numbers and <code>+ − * = ,</code> where the caret is · <code>/</code> makes
-          a fraction of what's before the caret · <code>^</code> exponent · <code>( )</code> and
-          <code>| |</code> brackets · letters, digits and <code>_</code> with no operator between
-          them are one name (<code>Vm_init</code>); multiply names with
-          <code>*</code> (<code>a*b</code>) · a name spelling a function (<code>sin</code>,
-          <code>cosh</code>, …) is that function · <code>\</code> commands (<code
+          Type letters, numbers and <code>+ − * = ,</code> where the caret is · conditions:
+          <code>&lt; &gt; &lt;= &gt;= !=</code>, <code>&amp;</code> (∧), <code>!</code> (¬),
+          <code>\or</code> (∨) · <code>/</code> makes a fraction of what's before the caret ·
+          <code>^</code> exponent · <code>( )</code> and <code>| |</code> brackets · letters, digits
+          and <code>_</code> with no operator between them are one name (<code>Vm_init</code>);
+          multiply names with <code>*</code> (<code>a*b</code>) · a name spelling a function
+          (<code>sin</code>, <code>cosh</code>, …) is that function · <code>\</code> commands (<code
             >\frac \sqrt \root \abs \dd \sin \alpha</code
           >
           …) · <kbd>Backspace</kbd>/<kbd>Delete</kbd> delete · <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo

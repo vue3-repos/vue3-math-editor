@@ -14,7 +14,9 @@ import {
   insertSymbol,
   nextPlaceholder,
   openParen,
+  typeEquals,
 } from './commands'
+import { KEY_SYMBOLS } from './operators'
 
 export interface KeyLike {
   key: string
@@ -24,9 +26,10 @@ export interface KeyLike {
 const SYMBOL_KEYS = /^[A-Za-z0-9_.+\-=,]$/
 
 // The character a key types into the equation, if it types one: "*" is
-// shown as "·".
+// shown as "·", "&" as "∧" and "!" as "¬" (see operators.ts).
 export function typedText(event: KeyLike): string | null {
   if (SYMBOL_KEYS.test(event.key)) return event.key
+  if (event.key in KEY_SYMBOLS) return KEY_SYMBOLS[event.key]
   return event.key === '*' ? '·' : null
 }
 
@@ -34,6 +37,7 @@ export function commandForKey(event: KeyLike): Command | null {
   const { key } = event
 
   const text = typedText(event)
+  if (text === '=') return typeEquals
   if (text !== null) return insertSymbol(text)
 
   switch (key) {

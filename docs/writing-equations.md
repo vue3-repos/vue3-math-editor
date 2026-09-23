@@ -163,17 +163,47 @@ followed by `x` is α × x.
 
 From loosest to tightest:
 
-1. `=`
-2. `+` and `-`
-3. multiplication, whether written with `*` or implied (`2x`, `3(x+1)`)
-4. a leading minus, which negates the whole term after it: `-2x` is −(2x)
-5. exponents
+1. the logical operators ∨, ⊻, ∧, then ¬ (see *Conditions* below)
+2. `=` and the other comparisons
+3. `+` and `-`
+4. multiplication, whether written with `*` or implied (`2x`, `3(x+1)`)
+5. a leading minus, which negates the whole term after it: `-2x` is −(2x)
+6. exponents
 
 So `4t-3` is (4t) − 3, `2+3*4` is 2 + (3 × 4), and `-x^2` is −(x²). Subtraction groups from
 the left: `a-b-c` is (a − b) − c. Brackets group anything explicitly.
 
-Chains such as `a=b=c` are read as (a = b) = c, which is rarely what's meant. Write each
-equation on its own line instead.
+Comparisons, `=` included, don't chain: in `a=b=c` or `0<x<1` the second one is marked as
+a problem. Write each equation on its own line, and join comparisons with ∧
+(`0<x & x<1`).
+
+## Conditions
+
+Conditions, such as the cases of a piecewise definition, use comparisons and logic.
+They are shown as mathematical symbols, not words, so they read as maths rather than
+code.
+
+| Type | Or | Shown as | Meaning |
+|---|---|---|---|
+| `<` `>` | `\lt` `\gt` | < > | less than, greater than |
+| `<=` `>=` | `\le` `\ge` | ≤ ≥ | less or equal, greater or equal |
+| `!=` | `\ne` | ≠ | not equal |
+| `=` | | = | equal |
+| `&` | `\and` | ∧ | and |
+| | `\or` | ∨ | or |
+| | `\xor` | ⊻ | exclusive or |
+| `!` | `\not` | ¬ | not |
+
+`<=`, `>=` and `!=` combine into one symbol as you type the `=`. The toolbar has a
+button for each (except ⊻).
+
+The logical operators bind more loosely than comparisons, and ∧ more tightly than ∨: so
+`t>=0 & t<1` is (t ≥ 0) ∧ (t < 1), and `a \or b & c` is a ∨ (b ∧ c). ¬ applies to the whole
+comparison after it: `!x>0` is ¬(x > 0).
+
+When pasting, LaTeX commands (`\leq`, `\land`, `\neg`, `\not=`, …) and plain-text `<=`,
+`>=`, `!=`, `==` and `&&` are all understood. The words `and`, `or` and `not` are not:
+they paste as names.
 
 ## Structures
 
@@ -303,6 +333,7 @@ Type `\`, the command's name, then Space, Enter, Tab or `(`. Esc cancels.
 | `\pow` | an exponent, like `^` |
 | `\sin`, `\log`, … | the function with empty brackets: sin(☐) |
 | `\alpha`, `\pi`, … | the Greek letter |
+| `\le`, `\and`, `\not`, … | a comparison or logical operator (see *Conditions*) |
 | anything else | the name typed out as letters (`\speed` gives `speed`) |
 
 ## Not supported yet
@@ -310,7 +341,8 @@ Type `\`, the command's name, then Space, Enter, Tab or `(`. Esc cancels.
 - **Subscript and superscript formatting in names.** Underscores are kept literally (see
   *Names*).
 - **Declaring your own functions**, so that `f(x)` is a function call rather than f × x.
-- **Chained relations** such as `a < b < c`, and relations other than `=`.
+- **Chained comparisons** such as `a < b < c`: join them with ∧ instead.
+- **Piecewise definitions** (cases). Planned; conditions are the first part.
 - **Integrals, sums, products, limits and matrices.**
 - **Typing a Greek letter's name without a backslash** to get the letter.
 - **Pasting several lines as several equations.** Pasted text all goes into one equation.

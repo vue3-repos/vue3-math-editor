@@ -9,6 +9,9 @@ export type AstNode =
   | RootNode
   | FunctionCallNode
   | EqualNode
+  | ComparisonNode
+  | LogicNode
+  | NotNode
   | DivideNode
   | PowerNode
   | DerivativeNode
@@ -75,6 +78,25 @@ export interface EqualNode {
   type: 'Equal'
   left: AstNode
   right: AstNode
+}
+
+// x < y, x ≤ y, … (see editor/operators.ts). Equality is EqualNode.
+export interface ComparisonNode {
+  type: 'Less' | 'Greater' | 'LessEqual' | 'GreaterEqual' | 'NotEqual'
+  left: AstNode
+  right: AstNode
+}
+
+// a ∧ b ∧ c, a ∨ b, a ⊻ b: flat, like Add.
+export interface LogicNode {
+  type: 'And' | 'Or' | 'Xor'
+  children: AstNode[]
+}
+
+// ¬a
+export interface NotNode {
+  type: 'Not'
+  value: AstNode
 }
 
 export interface DivideNode {

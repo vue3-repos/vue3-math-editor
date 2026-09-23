@@ -224,3 +224,30 @@ test.describe('scientific numbers', () => {
     }
   })
 })
+
+test.describe('conditions', () => {
+  test('comparisons and logic are typed as keys', async () => {
+    await wb.type('t>=0&t<1')
+    await wb.expectMathJson(['And', ['GreaterEqual', 't', 0], ['Less', 't', 1]])
+    await expect(wb.page.locator('[data-role="mathml"]')).toContainText('<geq/>')
+    await expect(wb.page.locator('[data-role="latex"]')).toHaveText('t\\geq 0\\land t<1')
+  })
+
+  test('!= becomes ≠ and ! alone is ¬', async () => {
+    await wb.type('!x!=1')
+    await wb.expectMathJson(['Not', ['NotEqual', 'x', 1]])
+  })
+
+  test('the toolbar inserts them', async () => {
+    await wb.type('a')
+    await wb.page.locator('[data-role="condition-buttons"] button[title^="Or"]').click()
+    await wb.type('b')
+    await wb.expectMathJson(['Or', 'a', 'b'])
+  })
+
+  test('a chained comparison is marked', async () => {
+    await wb.type('0<x<1')
+    await expect(wb.marks()).toHaveCount(1)
+    await expect(wb.page.locator('[data-role="diagnostics"]')).toContainText("can't be chained")
+  })
+})

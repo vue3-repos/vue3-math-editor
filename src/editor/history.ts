@@ -37,7 +37,7 @@ export interface UndoGroup {
 // one operator and what was typed after it: typing "x+1=2" and undoing
 // gives "x+1", then "x", then nothing. They play the part of the spaces
 // between words in a text editor.
-const OPERATORS = new Set(['+', '-', '=', '·', ','])
+const OPERATORS = new Set(['+', '-', '=', '·', ',', '<', '>', '≤', '≥', '≠', '∧', '∨', '⊻', '¬'])
 
 export function undoGroup(line: number, edit: EditInfo): UndoGroup {
   switch (edit.kind) {

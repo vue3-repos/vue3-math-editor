@@ -13,6 +13,7 @@
 import type { Atom, Row, RowPath, RowPathSegment } from '../editor/layout'
 import { rowPathsEqual } from '../editor/layout'
 import { GREEK_NAMES, nameRuns, numberRuns } from '../editor/identifiers'
+import { CONDITION_OPERATORS } from '../editor/operators'
 import { getFunctionDefinition } from '../registry/nodes'
 
 export interface LayoutLatexOptions {
@@ -57,9 +58,22 @@ const BINARY: Record<string, string> = {
   '*': '\\cdot',
   '·': '\\cdot',
   '×': '\\times',
+  // ∧ ∨ ⊻
+  ...Object.fromEntries(
+    CONDITION_OPERATORS.filter((op) => op.role === 'logic').map((op) => [op.symbol, op.latex]),
+  ),
 }
 
-const RELATION: Record<string, string> = { '=': '=' }
+// = < > ≤ ≥ ≠
+const RELATION: Record<string, string> = {
+  '=': '=',
+  ...Object.fromEntries(
+    CONDITION_OPERATORS.filter((op) => op.role === 'comparison').map((op) => [op.symbol, op.latex]),
+  ),
+}
+
+// ¬: an ordinary symbol before its operand.
+const PREFIX: Record<string, string> = { '¬': '\\lnot' }
 
 const TEXT_ESCAPES: Record<string, string> = {
   '\\': '\\textbackslash{}',
@@ -77,7 +91,7 @@ const TEXT_ESCAPES: Record<string, string> = {
 function isOperatorSymbol(atom: Atom | undefined): boolean {
   return (
     atom?.kind === 'symbol' &&
-    (atom.value in BINARY || atom.value in RELATION || atom.value === ',')
+    (atom.value in BINARY || atom.value in RELATION || atom.value in PREFIX || atom.value === ',')
   )
 }
 
@@ -104,6 +118,7 @@ function renderSymbol(id: string, value: string): string {
   if (value in BINARY) return `\\mathbin{${tag(id, BINARY[value])}}`
   if (value in RELATION) return `\\mathrel{${tag(id, RELATION[value])}}`
   if (value === ',') return `\\mathpunct{${tag(id, ',')}}`
+  if (value in PREFIX) return tag(id, PREFIX[value])
   if (/^[0-9.]$/.test(value) || /^[A-Za-z]$/.test(value)) return tag(id, value)
   if (GREEK_NAMES.has(value)) return tag(id, `\\${value}`)
   if (/^[A-Za-z]+$/.test(value)) return tag(id, `\\mathit{${value}}`)

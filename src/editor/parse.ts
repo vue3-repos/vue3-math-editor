@@ -9,13 +9,22 @@
 //
 // Grammar, loosest to tightest binding:
 //
-//   equation  := additive ( '=' additive )*
-//   additive  := unary ( ('+' | '-') unary )*
-//   unary     := '-' unary | term
-//   term      := factor ( ['*' | '·' | '×'] factor )*      implicit or explicit
-//   factor    := primary superscript*
-//   primary   := number | identifier | function | group | |abs| | fraction
-//              | root | derivative
+//   or         := xor ( '∨' xor )*
+//   xor        := and ( '⊻' and )*
+//   and        := not ( '∧' not )*
+//   not        := '¬' not | comparison
+//   comparison := additive ( ('=' | '<' | '>' | '≤' | '≥' | '≠') additive )?
+//   additive   := unary ( ('+' | '-') unary )*
+//   unary      := '-' unary | term
+//   term       := factor ( ['*' | '·' | '×'] factor )*     implicit or explicit
+//   factor     := primary superscript*
+//   primary    := number | identifier | function | group | |abs| | fraction
+//               | root | derivative
+//
+// "=" is a comparison like the others, so a condition such as x = 0 ∧ y > 1
+// groups as (x = 0) ∧ (y > 1); an equation y = … is the same Equal node.
+// Comparisons don't chain: in a < b < c the second one is reported (join them
+// with ∧), though the row is still parsed, left to right.
 //
 // Representation choices (see docs/cursor-refactor.md):
 // - `a + b + c` is one flat Add; `a · b · c` is one flat Multiply.
@@ -39,6 +48,7 @@
 import type { AstNode, NumberNode } from '../types/ast'
 import { continuesName, functionForSpelling, startsName } from './identifiers'
 import { numberAt } from './numbers'
+import { CONDITION_OPERATORS, conditionOperator } from './operators'
 import type { Row, StructureAtom } from './layout'
 
 export interface ParseDiagnostic {
@@ -63,7 +73,8 @@ export function parseRow(row: Row): ParseResult {
 // Tokens
 // ---------------------------------------------------------------------------
 
-type Operator = '+' | '-' | '=' | '*' | ','
+// '+', '-', '=', '*', ',' or a condition operator's symbol ('<', '∧', …).
+type Operator = string
 
 // Every token records the atoms it was read from.
 type Token = { atomIds: string[] } & (
@@ -84,7 +95,15 @@ const OPERATOR_SYMBOLS: Record<string, Operator> = {
   '·': '*',
   '×': '*',
   ',': ',',
+  ...Object.fromEntries(CONDITION_OPERATORS.map((op) => [op.symbol, op.symbol])),
 }
+
+// Loosest first: ∨, then ⊻, then ∧.
+const LOGIC_LEVELS = [
+  { symbol: '∨', type: 'Or' },
+  { symbol: '⊻', type: 'Xor' },
+  { symbol: '∧', type: 'And' },
+] as const
 
 function tokenize(row: Row, diagnostics: ParseDiagnostic[]): Token[] {
   const tokens: Token[] = []
@@ -169,6 +188,12 @@ function tokenize(row: Row, diagnostics: ParseDiagnostic[]): Token[] {
 // Parser
 // ---------------------------------------------------------------------------
 
+function comparisonType(op: string) {
+  if (op === '=') return 'Equal' as const
+  const operator = conditionOperator(op)
+  return operator?.role === 'comparison' ? operator.type : null
+}
+
 function placeholder(): AstNode {
   return { type: 'Placeholder' }
 }
@@ -190,7 +215,7 @@ class Parser {
   ) {}
 
   parseAll(): AstNode {
-    const result = this.parseEquation()
+    const result = this.parseLogic(0)
 
     // Defensive: the grammar consumes every token kind, but anything left
     // over is reported rather than silently dropped.
@@ -201,16 +226,50 @@ class Parser {
     return result
   }
 
-  // equation := additive ( '=' additive )*
-  private parseEquation(): AstNode {
-    let left = this.parseAdditive()
+  // or := xor ( '∨' xor )*, xor := and ( '⊻' and )*, and := not ( '∧' not )*
+  private parseLogic(level: number): AstNode {
+    if (level === LOGIC_LEVELS.length) return this.parseNot()
 
-    while (this.peekOperator('=')) {
+    const { symbol, type } = LOGIC_LEVELS[level]
+    const children = [this.parseLogic(level + 1)]
+
+    while (this.peekOperator(symbol)) {
       this.next()
-      left = { type: 'Equal', left, right: this.parseAdditive() }
+      children.push(this.parseLogic(level + 1))
     }
 
-    return left
+    return children.length === 1 ? children[0] : { type, children }
+  }
+
+  // not := '¬' not | comparison
+  private parseNot(): AstNode {
+    if (this.peekOperator('¬')) {
+      this.next()
+      return { type: 'Not', value: this.parseNot() }
+    }
+
+    return this.parseComparison()
+  }
+
+  // comparison := additive ( ('=' | '<' | …) additive )?
+  private parseComparison(): AstNode {
+    let left = this.parseAdditive()
+    let count = 0
+
+    for (;;) {
+      const token = this.peek()
+      const type = token?.kind === 'operator' ? comparisonType(token.op) : null
+      if (!token || !type) return left
+
+      this.next()
+      if (count++ > 0) {
+        this.diagnostics.push({
+          message: "Comparisons can't be chained: join them with ∧",
+          atomIds: token.atomIds,
+        })
+      }
+      left = { type, left, right: this.parseAdditive() }
+    }
   }
 
   // additive := unary ( ('+' | '-') unary )*

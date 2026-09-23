@@ -1,4 +1,5 @@
 import type { AstNode, NumberNode } from '../types/ast'
+import { conditionOperatorOfType } from '../editor/operators'
 import { getFunctionDefinition } from '../registry/nodes'
 
 function assertNever(value: never): never {
@@ -131,6 +132,27 @@ export function astToContentMathML(node: AstNode, options: ContentMathMLOptions 
         astToContentMathML(node.left, options),
         astToContentMathML(node.right, options),
       ])
+
+    case 'Less':
+    case 'Greater':
+    case 'LessEqual':
+    case 'GreaterEqual':
+    case 'NotEqual':
+      return renderApply(conditionOperatorOfType(node.type)!.mathml, [
+        astToContentMathML(node.left, options),
+        astToContentMathML(node.right, options),
+      ])
+
+    case 'And':
+    case 'Or':
+    case 'Xor':
+      return renderApply(
+        conditionOperatorOfType(node.type)!.mathml,
+        node.children.map((child) => astToContentMathML(child, options)),
+      )
+
+    case 'Not':
+      return renderApply('not', [astToContentMathML(node.value, options)])
 
     case 'Power':
       return renderApply('power', [

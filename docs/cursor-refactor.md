@@ -150,6 +150,47 @@ names: `1e-08`, `6.022E23`, `2.5e+3`. User-facing rules are in `writing-equation
 - **Undo:** the sign after a number's e doesn't start a new undo step the way an
   operator does, so `1e-08` is typed in one step (`isExponentSignPosition`).
 
+### Conditions: comparisons and logic
+
+The first stage of piecewise support (below): the operators a condition needs, all
+listed once in `editor/operators.ts`, which the parser, renderers, clipboard and keymap
+read.
+
+- **Symbols, not words:** < > ≤ ≥ ≠ ∧ ∨ ⊻ ¬, each one symbol atom. They are typed as `<`
+  `>`, `&` (∧) and `!` (¬), and `=` straight after `<`, `>` or `¬` combines with it
+  (`typeEquals`: `<=` is ≤, `!=` is ≠). There are `\` commands for each (`\le`, `\and`,
+  `\or`, `\xor`, `\not`, …) and toolbar buttons for all but ⊻.
+- **Grammar:** ∨ loosest, then ⊻, ∧, prefix ¬, then comparisons, then arithmetic. `=`
+  is a comparison like the others, so `x = 0 ∧ y > 1` groups as (x = 0) ∧ (y > 1); an
+  equation `y = …` is unchanged. ∧, ∨ and ⊻ are flat (`And(a, b, c)`), like Add.
+- **No chaining:** in `a < b < c` (or `a = b = c`) the second comparison is a
+  diagnostic, "join them with ∧"; the row is still parsed left to right.
+- **AST:** `Less`, `Greater`, `LessEqual`, `GreaterEqual`, `NotEqual` (left/right), `And`,
+  `Or`, `Xor` (children) and `Not` (value). MathJSON uses the same names; Content MathML
+  uses `lt gt leq geq neq and or xor not`, all in CellML 2.0's allowed subset.
+- **LaTeX:** `\leq \geq \neq \land \lor \veebar \lnot`. Pasting reads those and their
+  synonyms (`\le`, `\wedge`, `\neg`, `\not=`), plus plain-text `<= >= != == &&`.
+- **Rendering:** comparisons as relations (`\mathrel`), ∧ ∨ ⊻ as binary operators, ¬ as
+  an ordinary symbol.
+
+### Piecewise (planned)
+
+Decisions so far:
+
+- **Structure:** a new atom owning rows `value₁, condition₁, …, valueₙ, conditionₙ` and an
+  optional `otherwise` row, rendered with KaTeX's `cases`. It is an expression, so it can
+  appear anywhere (neither MathML nor CellML restricts it).
+- **Otherwise** is included when a piecewise is inserted, pre-filled with `0.0` as a
+  placeholder, and can be deleted.
+- **Logic** is shown as ∧ ∨ ¬ (done, above). **No chained comparisons** (done).
+- **Exports:** Content MathML `<piecewise><piece>…</piece><otherwise>…</otherwise>`,
+  MathJSON `Which`, LaTeX `cases` (also read when pasting).
+
+To work out while building: the first structure with a variable number of rows needs
+indexed row-path branches; editing gestures (proposed: Enter in a piece adds one below,
+Backspace in an empty piece removes it, → and Tab move from a value to its condition);
+and a rendering/caret prototype inside KaTeX's table layout, to be done first.
+
 ### Rendering and caret notes (step 3)
 
 - `renderers/layoutLatex.ts` wraps every atom in `\htmlData{atom=<id>}` and every row in
@@ -392,3 +433,7 @@ multi-line list, command mode, toolbar and output panels.
 - Pasting several lines as several equations.
 - Showing a mark's message when the caret is on it, for keyboard users (the warning
   box lists them meanwhile).
+- CellML 2.0 MathML the editor can't produce yet: the constants `pi`, `exponentiale`,
+  `infinity`, `true` and `false` (`e` and `pi` currently export as variables); `floor`,
+  `ceiling`, `min`, `max`, `rem`; and the reciprocal and inverse hyperbolic trig
+  functions.

@@ -67,7 +67,20 @@ export function astToMathJson(node: AstNode): MathJsonValue {
     }
 
     case 'Equal':
-      return ['Equal', astToMathJson(node.left), astToMathJson(node.right)]
+    case 'Less':
+    case 'Greater':
+    case 'LessEqual':
+    case 'GreaterEqual':
+    case 'NotEqual':
+      return [node.type, astToMathJson(node.left), astToMathJson(node.right)]
+
+    case 'And':
+    case 'Or':
+    case 'Xor':
+      return [node.type, ...node.children.map(astToMathJson)]
+
+    case 'Not':
+      return ['Not', astToMathJson(node.value)]
 
     case 'Divide':
       return ['Divide', astToMathJson(node.numerator), astToMathJson(node.denominator)]
