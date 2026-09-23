@@ -199,9 +199,29 @@ export function nearestOffset(
   return best
 }
 
+// Whether (x, y) is on the bar of the fraction (or derivative) that owns
+// `rowEl`. Glyph boxes above and below the bar reach almost to it, so without
+// this a click on the bar would land in the numerator or denominator; on the
+// bar it should place the cursor before or after the whole fraction.
+function onOwnFractionBar(rowEl: Element, x: number, y: number): boolean {
+  const owner = rowEl.parentElement?.closest('[data-atom]')
+  if (!owner) return false
+
+  const tolerance = 2
+
+  return Array.from(owner.querySelectorAll('.frac-line')).some((line) => {
+    if (line.closest('[data-atom]') !== owner) return false // a nested fraction's bar
+    const box = line.getBoundingClientRect()
+    return (
+      x >= box.left && x <= box.right && y >= box.top - tolerance && y <= box.bottom + tolerance
+    )
+  })
+}
+
 // The cursor a click at (clientX, clientY) should place: the gap nearest to
 // the click in the innermost row whose painted box contains it, or in the
-// root row if none does.
+// root row if none does. A click on a fraction bar belongs to the row that
+// contains the fraction.
 export function hitTest(container: Element, root: Row, clientX: number, clientY: number): Cursor {
   const slack = 2
   let bestPath: RowPath = []
@@ -209,6 +229,7 @@ export function hitTest(container: Element, root: Row, clientX: number, clientY:
   for (const el of Array.from(container.querySelectorAll('[data-row]'))) {
     const path = decodeRowPath(el.getAttribute('data-row'))
     if (!path || path.length <= bestPath.length || !getRow(root, path)) continue
+    if (onOwnFractionBar(el, clientX, clientY)) continue
 
     const box = paintedBounds(el)
     if (

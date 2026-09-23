@@ -110,6 +110,21 @@ the UI can mark them.
 - The development page is `playground.html` (under `npm run dev`, open
   `/playground.html`). It is not part of the production build.
 
+### Testing
+
+- **Unit tests** (Vitest, `npm test`): `tests/*.spec.ts`. Pure model code (cursor
+  movement, parser, LaTeX generation), including randomised property tests.
+- **Browser tests** (Playwright, `npm run test:e2e`): `tests/e2e/`. These drive
+  `playground.html` in Chromium, because caret placement and click hit-testing depend
+  on real KaTeX layout, which jsdom doesn't do. The expected cursor positions are
+  computed from the same sample trees the page renders (`src/dev/samples.ts`), and
+  assertions read the cursor and MathJSON the playground prints, not pixels. The
+  config starts the Vite dev server itself.
+- **Screenshot tests** are opt-in (`npm run test:e2e:visual`, tagged `@visual`),
+  because font rendering differs by OS. Baselines are per platform; create or refresh
+  them with `npm run test:e2e:visual -- --update-snapshots`.
+- One-off setup after `npm install`: `npx playwright install chromium`.
+
 ## Keep / replace / delete
 
 **Keep:** `types/ast.ts`; `renderers/mathjson.ts`, `mathml.ts`, `latex.ts`;

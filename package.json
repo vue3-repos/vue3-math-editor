@@ -12,7 +12,9 @@
     "lint:oxlint": "oxlint . --fix",
     "lint:eslint": "eslint . --fix --cache",
     "format": "prettier --write --experimental-cli src/",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:visual": "E2E_VISUAL=1 playwright test --grep @visual"
   },
   "dependencies": {
     "@primeuix/themes": "^2.0.3",
@@ -23,6 +25,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.63.0",
     "@typescript-eslint/eslint-plugin": "^8.46.3",
     "@typescript-eslint/parser": "^8.46.3",
     "@vitejs/plugin-vue": "^6.0.7",
@@ -45,5 +48,8 @@
   },
   "engines": {
     "node": "^22.18.0 || >=24.12.0"
+  },
+  "allowScripts": {
+    "fsevents@2.3.3": true
   }
 }
