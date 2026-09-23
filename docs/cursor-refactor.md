@@ -259,10 +259,33 @@ Copy as uses the async clipboard API (`text/plain` only), falling back to
   them with `npm run test:e2e:visual -- --update-snapshots`.
 - One-off setup after `npm install`: `npx playwright install chromium`.
 
+### Units checking with libCellML (shelved)
+
+Dimensional analysis will be done by libCellML, not the editor: it takes the Content
+MathML and reports which variables, by name, have incompatible units, and in which
+equation. Nothing is built yet; these notes record how the editor should fit around it.
+
+- **Mapping a report back to the equation needs no parser changes.** libCellML reports
+  names, not positions, and `nameRuns` (identifiers.ts) already finds every occurrence
+  of a name in a line's layout tree. The host maps the reported equation to a
+  workbench line, and the line underlines the name's atoms.
+- **One marking mechanism for both kinds of problem.** Parser diagnostics and units
+  issues should share the underline overlay (drawn like the selection box) and a
+  common shape, roughly `{ message, atomIds, source: 'parser' | 'units' }`. Units
+  issues arrive by name, so MathField resolves `{ name, message }` to atom ids itself.
+- **Names are already valid CellML identifiers.** Names are
+  `[A-Za-z][A-Za-z0-9_]*`, which matches CellML's identifier rule, and Greek letters
+  are exported by name (`<ci>alpha</ci>`). An empty slot exports as `<ci>_</ci>`,
+  which is not a valid identifier, so incomplete equations should not be sent.
+- **Numbers will need units.** CellML 2.0 requires `cellml:units` on every `<cn>`,
+  and the export currently writes a bare `<cn>2</cn>`. Deciding how a constant gets
+  its units (a default of `dimensionless`, set by the host, or entered by the user) is
+  the one open question that touches the editor's semantics.
+
 ## What was kept, replaced and removed
 
 **Kept:** `types/ast.ts`; `renderers/mathjson.ts`, `mathml.ts`, `latex.ts`; `registry/nodes.ts`
-(`FUNCTION_REGISTRY`; `NODE_REGISTRY` is now unused); the workbench's undo/redo,
+(`FUNCTION_REGISTRY`; the unused `NODE_REGISTRY` was removed); the workbench's undo/redo,
 multi-line list, command mode, toolbar and output panels.
 
 **Replaced:** `editor/commands.ts` (now layout-tree commands); `EquationWorkbench.vue`
@@ -287,6 +310,6 @@ multi-line list, command mode, toolbar and output panels.
 - Make the LaTeX output panel show the same LaTeX as copying does.
 - Pasting several lines as several equations.
 - Marking parser diagnostics on the offending atom (each diagnostic carries its
-  `atomId`).
+  `atomId`), built so units issues from libCellML can use the same marking (see
+  above).
 - Coalescing consecutive typing into one undo step.
-- Removing `NODE_REGISTRY` if nothing needs it.

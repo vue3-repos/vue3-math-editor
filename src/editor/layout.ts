@@ -120,10 +120,6 @@ export function childRows(atom: Atom): Array<[BranchName, Row]> {
   }
 }
 
-export function hasChildRows(atom: Atom): boolean {
-  return childRows(atom).length > 0
-}
-
 export function getChildRow(atom: Atom, branch: BranchName): Row | null {
   return childRows(atom).find(([name]) => name === branch)?.[1] ?? null
 }
