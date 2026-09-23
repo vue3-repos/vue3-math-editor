@@ -1,8 +1,8 @@
 <script setup lang="ts">
-// Development page for the cursor refactor (docs/cursor-refactor.md, step 3).
-// Open /playground.html under `npm run dev`. Each field is navigable with the
-// arrow keys, Home/End and the mouse; nothing is editable yet (step 4).
-// The Playwright tests in tests/e2e drive this page.
+// Development page for the cursor refactor (docs/cursor-refactor.md).
+// Open /playground.html under `npm run dev`. Each field can be navigated with
+// the arrow keys, Home/End and the mouse, and edited by typing (no undo here;
+// reload to reset). The Playwright tests in tests/e2e drive this page.
 import { computed, reactive } from 'vue'
 
 import MathField from '../components/MathField.vue'
@@ -38,7 +38,7 @@ const parsed = computed(() =>
     <h1>Cursor playground</h1>
     <p class="hint">
       Click a field, then use <kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> <kbd>Home</kbd>
-      <kbd>End</kbd>, or click anywhere in an equation. Editing arrives in step 4.
+      <kbd>End</kbd>, or click anywhere in an equation. Typing edits the sample; reload to reset.
     </p>
 
     <section
@@ -48,7 +48,12 @@ const parsed = computed(() =>
       :data-sample="sample.id"
     >
       <h2>{{ sample.label }}</h2>
-      <MathField v-model:cursor="sample.cursor" :model-value="sample.row" class="field" />
+      <MathField
+        v-model:cursor="sample.cursor"
+        :model-value="sample.row"
+        class="field"
+        @edit="(next) => ((sample.row = next.root), (sample.cursor = next.cursor))"
+      />
       <dl>
         <dt>Cursor</dt>
         <dd data-role="cursor">{{ describeCursor(sample.cursor) }}</dd>

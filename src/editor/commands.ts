@@ -1,904 +1,490 @@
-import type { AstNode, PlaceholderNode } from '../types/ast'
-import type { CaretSide, NodeChildKey, NodePath } from '../types/editor'
+// Editing commands over the layout tree (see docs/cursor-refactor.md).
+//
+// Every command is a pure function EditorState -> EditorState. A command that
+// has nothing to do returns the *same* state object, so callers can tell a
+// no-op apart (e.g. Backspace in an empty equation lets the workbench remove
+// the line instead).
+//
+// Commands only ever insert or remove atoms at the cursor and move the
+// cursor; the semantic tree is re-derived by parse.ts after every change, so
+// there is no operator-precedence logic here.
 
-export interface CommandResult {
-  ast: AstNode
-  focusedPath: NodePath
+import { type Cursor, allPositions, cursorAtStart, cursorsEqual } from './cursor'
+import {
+  type Atom,
+  type BranchName,
+  type GroupDelimiter,
+  type Row,
+  type RowPath,
+  childRows,
+  derivative,
+  fraction,
+  func,
+  getChildRow,
+  getRow,
+  group,
+  root,
+  row,
+  superscript,
+  symbol,
+} from './layout'
+import { FUNCTION_REGISTRY, getFunctionDefinition } from '../registry/nodes'
+
+export interface EditorState {
+  root: Row
+  cursor: Cursor
 }
 
-export type NodeCommand = (root: AstNode, path: NodePath) => CommandResult
+export type Command = (state: EditorState) => EditorState
 
-function makePlaceholder(): PlaceholderNode {
-  return { type: 'Placeholder' }
+export function emptyState(): EditorState {
+  return { root: [], cursor: cursorAtStart() }
 }
 
-function clonePath(path: NodePath): NodePath {
-  return [...path]
+// ---------------------------------------------------------------------------
+// Tree helpers
+// ---------------------------------------------------------------------------
+
+function requireRow(tree: Row, path: RowPath): Row {
+  const found = getRow(tree, path)
+  if (!found) throw new Error('Cursor path does not resolve')
+  return found
 }
 
-function samePath(a: NodePath, b: NodePath): boolean {
-  if (a.length !== b.length) {
-    return false
-  }
+// Rebuild the tree with the row at `path` replaced by update(row).
+function updateRow(tree: Row, path: RowPath, update: (row: Row) => Row): Row {
+  if (path.length === 0) return update(tree)
 
-  return a.every((part, index) => part === b[index])
+  const [head, ...rest] = path
+  const atom = tree[head.atom]
+  const child = getChildRow(atom, head.branch)
+  if (!child) throw new Error('Cursor path does not resolve')
+
+  const next = tree.slice()
+  // Branch names are the atoms' own property names (num, den, sup, …).
+  next[head.atom] = { ...atom, [head.branch]: updateRow(child, rest, update) } as Atom
+  return next
 }
 
-type PathContainer = AstNode | AstNode[]
-
-export function getChildValue(node: AstNode, key: NodeChildKey): PathContainer | null {
-  switch (key) {
-    case 'left':
-      return node.type === 'Equal' ? node.left : null
-    case 'right':
-      return node.type === 'Equal' ? node.right : null
-    case 'children':
-      return node.type === 'Add' || node.type === 'Multiply' ? node.children : null
-    case 'args':
-      return node.type === 'FunctionCall' ? node.args : null
-    case 'minuend':
-      return node.type === 'Subtract' ? node.minuend : null
-    case 'subtrahend':
-      return node.type === 'Subtract' ? node.subtrahend : null
-    case 'numerator':
-      return node.type === 'Divide' ? node.numerator : null
-    case 'denominator':
-      return node.type === 'Divide' ? node.denominator : null
-    case 'base':
-      return node.type === 'Power' ? node.base : null
-    case 'exponent':
-      return node.type === 'Power' ? node.exponent : null
-    case 'expression':
-      return node.type === 'Derivative' ? node.expression : null
-    case 'variable':
-      return node.type === 'Derivative' ? node.variable : null
-    case 'value':
-      return node.type === 'Negate' || node.type === 'Abs' || node.type === 'Group'
-        ? node.value
-        : null
-    case 'radicand':
-      return node.type === 'Root' ? node.radicand : null
-    case 'degree':
-      return node.type === 'Root' ? node.degree : null
-    default:
-      return null
-  }
-}
-
-export function childKeysForNode(node: AstNode): NodeChildKey[] {
-  switch (node.type) {
-    case 'Add':
-    case 'Multiply':
-      return ['children']
-    case 'FunctionCall':
-      return ['args']
-    case 'Equal':
-      return ['left', 'right']
-    case 'Subtract':
-      return ['minuend', 'subtrahend']
-    case 'Divide':
-      return ['numerator', 'denominator']
-    case 'Power':
-      return ['base', 'exponent']
-    // Two-key nodes are listed in entry order so placeholder cycling and
-    // caret navigation match how the user fills them in.
-    case 'Derivative':
-      return ['expression', 'variable']
-    case 'Negate':
-    case 'Abs':
-    case 'Group':
-      return ['value']
-    case 'Root':
-      return ['degree', 'radicand']
-    default:
-      return []
-  }
-}
-
-function setChildValue(node: AstNode, key: NodeChildKey, child: PathContainer): AstNode {
-  switch (key) {
-    case 'left':
-      return node.type === 'Equal' && !Array.isArray(child) ? { ...node, left: child } : node
-    case 'right':
-      return node.type === 'Equal' && !Array.isArray(child) ? { ...node, right: child } : node
-    case 'children':
-      return (node.type === 'Add' || node.type === 'Multiply') && Array.isArray(child)
-        ? { ...node, children: child }
-        : node
-    case 'args':
-      return node.type === 'FunctionCall' && Array.isArray(child) ? { ...node, args: child } : node
-    case 'minuend':
-      return node.type === 'Subtract' && !Array.isArray(child) ? { ...node, minuend: child } : node
-    case 'subtrahend':
-      return node.type === 'Subtract' && !Array.isArray(child)
-        ? { ...node, subtrahend: child }
-        : node
-    case 'numerator':
-      return node.type === 'Divide' && !Array.isArray(child) ? { ...node, numerator: child } : node
-    case 'denominator':
-      return node.type === 'Divide' && !Array.isArray(child)
-        ? { ...node, denominator: child }
-        : node
-    case 'base':
-      return node.type === 'Power' && !Array.isArray(child) ? { ...node, base: child } : node
-    case 'exponent':
-      return node.type === 'Power' && !Array.isArray(child) ? { ...node, exponent: child } : node
-    case 'expression':
-      return node.type === 'Derivative' && !Array.isArray(child)
-        ? { ...node, expression: child }
-        : node
-    case 'variable':
-      return node.type === 'Derivative' && !Array.isArray(child)
-        ? { ...node, variable: child }
-        : node
-    case 'value':
-      return (node.type === 'Negate' || node.type === 'Abs' || node.type === 'Group') &&
-        !Array.isArray(child)
-        ? { ...node, value: child }
-        : node
-    case 'radicand':
-      return node.type === 'Root' && !Array.isArray(child) ? { ...node, radicand: child } : node
-    case 'degree':
-      return node.type === 'Root' && !Array.isArray(child) ? { ...node, degree: child } : node
-    default:
-      return node
-  }
-}
-
-function getValueAtPath(root: PathContainer, path: NodePath): PathContainer {
-  if (path.length === 0) {
-    return root
-  }
-
-  const [head, ...tail] = path
-
-  if (typeof head === 'number') {
-    if (!Array.isArray(root)) {
-      throw new Error(`Cannot index non-array path segment: ${head}`)
-    }
-
-    const child = root[head]
-
-    if (!child) {
-      throw new Error(`Missing array element at path index: ${head}`)
-    }
-
-    return getValueAtPath(child, tail)
-  }
-
-  if (Array.isArray(root)) {
-    throw new Error(`Expected array index but received key: ${head}`)
-  }
-
-  const child = getChildValue(root, head)
-
-  if (child === null) {
-    throw new Error(`Invalid AST path segment: ${head}`)
-  }
-
-  return getValueAtPath(child, tail)
-}
-
-function replaceValueAtPath(
-  root: PathContainer,
-  path: NodePath,
-  nextValue: PathContainer,
-): PathContainer {
-  if (path.length === 0) {
-    return nextValue
-  }
-
-  const [head, ...tail] = path
-
-  if (typeof head === 'number') {
-    if (!Array.isArray(root)) {
-      throw new Error(`Cannot replace array index on non-array path: ${head}`)
-    }
-
-    const currentChild = root[head]
-
-    if (!currentChild) {
-      throw new Error(`Cannot replace missing array element at index: ${head}`)
-    }
-
-    const nextArray = [...root]
-    const replaced = replaceValueAtPath(currentChild, tail, nextValue)
-
-    if (Array.isArray(replaced)) {
-      throw new Error('AST node replacement cannot resolve to an array element list')
-    }
-
-    nextArray[head] = replaced
-    return nextArray
-  }
-
-  if (Array.isArray(root)) {
-    throw new Error(`Expected numeric array index but received key: ${head}`)
-  }
-
-  const currentChild = getChildValue(root, head)
-
-  if (currentChild === null) {
-    throw new Error(`Cannot replace missing child at path segment: ${head}`)
-  }
-
-  return setChildValue(root, head, replaceValueAtPath(currentChild, tail, nextValue))
-}
-
-export function firstChildPath(node: AstNode): NodePath | null {
-  switch (node.type) {
-    case 'Add':
-    case 'Multiply':
-      return node.children.length > 0 ? ['children', 0] : null
-    case 'FunctionCall':
-      return node.args.length > 0 ? ['args', 0] : null
-    case 'Equal':
-      return ['left']
-    case 'Subtract':
-      return ['minuend']
-    case 'Divide':
-      return ['numerator']
-    case 'Power':
-      return ['base']
-    case 'Derivative':
-      return ['expression']
-    case 'Negate':
-    case 'Abs':
-    case 'Group':
-      return ['value']
-    case 'Root':
-      return ['radicand']
-    default:
-      return null
-  }
-}
-
-export function getNodeAtPath(root: AstNode, path: NodePath): AstNode {
-  const value = getValueAtPath(root, path)
-
-  if (Array.isArray(value)) {
-    throw new Error('Resolved path points to an AST node collection, not a node')
-  }
-
-  return value
-}
-
-export function replaceNodeAtPath(root: AstNode, path: NodePath, nextNode: AstNode): AstNode {
-  const nextValue = replaceValueAtPath(root, path, nextNode)
-
-  if (Array.isArray(nextValue)) {
-    throw new Error('Root replacement must resolve to an AST node')
-  }
-
-  return nextValue
-}
-
-export function updateNodeAtPath(
-  root: AstNode,
-  path: NodePath,
-  updater: (node: AstNode) => AstNode,
-): AstNode {
-  const target = getNodeAtPath(root, path)
-  const nextTarget = updater(target)
-  return replaceNodeAtPath(root, path, nextTarget)
-}
-
-function pathHasParent(path: NodePath): boolean {
-  return path.length > 0
-}
-
-function parentPath(path: NodePath): NodePath {
-  return path.slice(0, -1)
-}
-
-export function unwrapNodeAtPath(root: AstNode, path: NodePath): CommandResult {
-  const node = getNodeAtPath(root, path)
-  const childPath = firstChildPath(node)
-
-  if (!childPath) {
-    return {
-      ast: root,
-      focusedPath: clonePath(path),
-    }
-  }
-
-  const replacement = getNodeAtPath(node, childPath)
-
-  const ast = replaceNodeAtPath(root, path, replacement)
-
+function splice(
+  state: EditorState,
+  path: RowPath,
+  start: number,
+  deleteCount: number,
+  items: Atom[],
+  cursor: Cursor,
+): EditorState {
   return {
-    ast,
-    focusedPath: clonePath(path),
+    root: updateRow(state.root, path, (r) => [
+      ...r.slice(0, start),
+      ...items,
+      ...r.slice(start + deleteCount),
+    ]),
+    cursor,
   }
 }
 
-export function insertFractionAtPath(root: AstNode, path: NodePath): CommandResult {
-  const ast = updateNodeAtPath(root, path, (target) => ({
-    type: 'Divide',
-    numerator: target,
-    denominator: makePlaceholder(),
-  }))
+const OPERATOR_VALUES = new Set(['+', '-', '−', '=', '*', '·', '×', ','])
 
-  return {
-    ast,
-    focusedPath: [...path, 'denominator'],
-  }
+function isOperator(atom: Atom | undefined): boolean {
+  return atom?.kind === 'symbol' && OPERATOR_VALUES.has(atom.value)
 }
 
-export function insertPowerAtPath(root: AstNode, path: NodePath): CommandResult {
-  const ast = updateNodeAtPath(root, path, (target) => ({
-    type: 'Power',
-    base: target,
-    exponent: makePlaceholder(),
-  }))
-
-  return {
-    ast,
-    focusedPath: [...path, 'exponent'],
-  }
+function isLetter(atom: Atom | undefined): atom is Atom & { kind: 'symbol' } {
+  return atom?.kind === 'symbol' && /^[A-Za-z]$/.test(atom.value)
 }
 
-export function insertDerivativeAtPath(root: AstNode, path: NodePath): CommandResult {
-  const wasPlaceholder = getNodeAtPath(root, path).type === 'Placeholder'
-
-  const ast = updateNodeAtPath(root, path, (target) => ({
-    type: 'Derivative',
-    expression: target,
-    variable: makePlaceholder(),
-  }))
-
-  // Fill the numerator first; when wrapping existing content the numerator is
-  // already filled, so move straight to the variable slot.
-  return {
-    ast,
-    focusedPath: wasPlaceholder ? [...path, 'expression'] : [...path, 'variable'],
-  }
+function isEmptyStructure(atom: Atom): boolean {
+  const rows = childRows(atom)
+  return rows.length > 0 && rows.every(([, r]) => r.length === 0)
 }
 
-export function insertAddAtPath(root: AstNode, path: NodePath): CommandResult {
-  const ast = updateNodeAtPath(root, path, (target) =>
-    target.type === 'Add'
-      ? {
-          ...target,
-          children: [...target.children, makePlaceholder()],
-        }
-      : {
-          type: 'Add',
-          children: [target, makePlaceholder()],
-        },
-  )
-
-  const focusedNode = getNodeAtPath(ast, path)
-  const nextIndex = focusedNode.type === 'Add' ? focusedNode.children.length - 1 : 1
-
-  return {
-    ast,
-    focusedPath: [...path, 'children', nextIndex],
-  }
-}
-
-export function insertMultiplyAtPath(root: AstNode, path: NodePath): CommandResult {
-  const ast = updateNodeAtPath(root, path, (target) =>
-    target.type === 'Multiply'
-      ? {
-          ...target,
-          children: [...target.children, makePlaceholder()],
-        }
-      : {
-          type: 'Multiply',
-          children: [target, makePlaceholder()],
-        },
-  )
-
-  const focusedNode = getNodeAtPath(ast, path)
-  const nextIndex = focusedNode.type === 'Multiply' ? focusedNode.children.length - 1 : 1
-
-  return {
-    ast,
-    focusedPath: [...path, 'children', nextIndex],
-  }
-}
-
-// Mirror of insertMultiplyAtPath for typing a new factor to the *left* of
-// the focused term (e.g. arriving at "t" via ArrowLeft, then typing "3" to
-// build "3t" rather than "t3").
-export function insertMultiplyBeforeAtPath(root: AstNode, path: NodePath): CommandResult {
-  const ast = updateNodeAtPath(root, path, (target) =>
-    target.type === 'Multiply'
-      ? {
-          ...target,
-          children: [makePlaceholder(), ...target.children],
-        }
-      : {
-          type: 'Multiply',
-          children: [makePlaceholder(), target],
-        },
-  )
-
-  return {
-    ast,
-    focusedPath: [...path, 'children', 0],
-  }
-}
-
-export function insertSubtractAtPath(root: AstNode, path: NodePath): CommandResult {
-  const ast = updateNodeAtPath(root, path, (target) => ({
-    type: 'Subtract',
-    minuend: target,
-    subtrahend: makePlaceholder(),
-  }))
-
-  return {
-    ast,
-    focusedPath: [...path, 'subtrahend'],
-  }
-}
-
-export function insertEqualAtPath(root: AstNode, path: NodePath): CommandResult {
-  const ast = updateNodeAtPath(root, path, (target) => ({
-    type: 'Equal',
-    left: target,
-    right: makePlaceholder(),
-  }))
-
-  return {
-    ast,
-    focusedPath: [...path, 'right'],
-  }
-}
-
-export function replaceFocusedNode(
-  root: AstNode,
-  path: NodePath,
-  nextNode: AstNode,
-): CommandResult {
-  return {
-    ast: replaceNodeAtPath(root, path, nextNode),
-    focusedPath: clonePath(path),
-  }
-}
-
-export function resolveCommandPath(path: NodePath | null): NodePath {
-  if (path && path.length >= 0) {
-    return clonePath(path)
-  }
-
-  return []
-}
-
-export function collapseSelection(path: NodePath | null) {
-  const resolved = resolveCommandPath(path)
-
-  return {
-    anchor: resolved,
-    focus: clonePath(resolved),
-  }
-}
-
-export function fallbackFocusAfterDelete(path: NodePath): NodePath {
-  if (!pathHasParent(path)) {
-    return []
-  }
-
-  // Paths ending with a numeric segment point to an element inside an AST node array
-  // (e.g. [..., 'children', 1] or [..., 'args', 0]).
-  // The immediate parent ([..., 'children']) is a collection, not an AST node, so
-  // delete fallback must move focus to the owning node instead.
-  const last = path[path.length - 1]
-
-  if (typeof last === 'number') {
-    return path.slice(0, -2)
-  }
-
-  return parentPath(path)
-}
-
-function collectPlaceholderPathsRecursive(node: AstNode, path: NodePath, output: NodePath[]): void {
-  if (node.type === 'Placeholder') {
-    output.push(clonePath(path))
-    return
-  }
-
-  for (const key of childKeysForNode(node)) {
-    const childValue = getChildValue(node, key)
-
-    if (childValue === null) {
-      continue
-    }
-
-    if (Array.isArray(childValue)) {
-      childValue.forEach((child, index) => {
-        collectPlaceholderPathsRecursive(child, [...path, key, index], output)
-      })
-      continue
-    }
-
-    collectPlaceholderPathsRecursive(childValue, [...path, key], output)
-  }
-}
-
-export function getPlaceholderPaths(root: AstNode): NodePath[] {
-  const paths: NodePath[] = []
-  collectPlaceholderPathsRecursive(root, [], paths)
-  return paths
-}
-
-export function getNextPlaceholderPath(
-  root: AstNode,
-  focusedPath: NodePath | null,
-  direction: 'forward' | 'backward',
-): NodePath | null {
-  const slots = getPlaceholderPaths(root)
-
-  if (slots.length === 0) {
-    return null
-  }
-
-  if (!focusedPath) {
-    return clonePath(slots[0])
-  }
-
-  const exactIndex = slots.findIndex((path) => samePath(path, focusedPath))
-
-  if (exactIndex >= 0) {
-    const delta = direction === 'forward' ? 1 : -1
-    const nextIndex = (exactIndex + delta + slots.length) % slots.length
-    return clonePath(slots[nextIndex])
-  }
-
-  if (direction === 'forward') {
-    return clonePath(slots[0])
-  }
-
-  return clonePath(slots[slots.length - 1])
-}
-
-export function isPlaceholderAtPath(root: AstNode, path: NodePath | null): boolean {
-  if (!path) {
-    return false
-  }
-
-  return getNodeAtPath(root, path).type === 'Placeholder'
-}
-
-export function replaceNodeWithPlaceholder(root: AstNode, path: NodePath): CommandResult {
-  const ast = replaceNodeAtPath(root, path, makePlaceholder())
-
-  return {
-    ast,
-    focusedPath: clonePath(path),
-  }
-}
-
-export function insertGroupAtPath(root: AstNode, path: NodePath): CommandResult {
-  const wasPlaceholder = getNodeAtPath(root, path).type === 'Placeholder'
-
-  const ast = updateNodeAtPath(root, path, (target) => ({
-    type: 'Group',
-    value: target,
-  }))
-
-  return {
-    ast,
-    focusedPath: wasPlaceholder ? [...path, 'value'] : clonePath(path),
-  }
-}
-
-export function insertNegateAtPath(root: AstNode, path: NodePath): CommandResult {
-  const ast = updateNodeAtPath(root, path, (target) => ({
-    type: 'Negate',
-    value: target,
-  }))
-
-  return {
-    ast,
-    focusedPath: [...path, 'value'],
-  }
-}
-
-export function insertAbsAtPath(root: AstNode, path: NodePath): CommandResult {
-  const ast = updateNodeAtPath(root, path, (target) => ({
-    type: 'Abs',
-    value: target,
-  }))
-
-  return {
-    ast,
-    focusedPath: [...path, 'value'],
-  }
-}
-
-export function insertRootAtPath(root: AstNode, path: NodePath, withDegree: boolean): CommandResult {
-  const wasPlaceholder = getNodeAtPath(root, path).type === 'Placeholder'
-
-  const ast = updateNodeAtPath(root, path, (target) => ({
-    type: 'Root',
-    radicand: target,
-    degree: withDegree ? makePlaceholder() : null,
-  }))
-
-  const focusedPath: NodePath = withDegree
-    ? [...path, 'degree']
-    : wasPlaceholder
-      ? [...path, 'radicand']
-      : clonePath(path)
-
-  return { ast, focusedPath }
-}
-
-export function insertFunctionAtPath(root: AstNode, path: NodePath, name: string): CommandResult {
-  const ast = updateNodeAtPath(root, path, (target) => ({
-    type: 'FunctionCall',
-    name,
-    args: [target],
-  }))
-
-  return {
-    ast,
-    focusedPath: [...path, 'args', 0],
-  }
-}
-
-// Typing "(" right after an identifier turns it into a function call, e.g.
-// "x(" -> x(□), using the identifier's own name as the function name. Unlike
-// insertFunctionAtPath (which wraps some other already-typed value as the
-// first argument), the identifier itself is consumed as the name, so the
-// argument list must start with a fresh placeholder rather than a copy of
-// the identifier.
-export function convertIdentifierToFunctionCallAtPath(root: AstNode, path: NodePath): CommandResult {
-  const node = getNodeAtPath(root, path)
-
-  if (node.type !== 'Identifier') {
-    throw new Error('convertIdentifierToFunctionCallAtPath expects an Identifier node')
-  }
-
-  const ast = replaceNodeAtPath(root, path, {
-    type: 'FunctionCall',
-    name: node.name,
-    args: [makePlaceholder()],
-  })
-
-  return {
-    ast,
-    focusedPath: [...path, 'args', 0],
-  }
-}
-
-interface VariadicContext {
-  parentPath: NodePath
-  parent: AstNode
-  key: 'children' | 'args'
+// The atom that owns the cursor's row, and where it sits.
+interface Owner {
+  rowPath: RowPath
   index: number
+  atom: Atom
+  branch: BranchName
 }
 
-function variadicContext(root: AstNode, path: NodePath): VariadicContext | null {
-  if (path.length < 2) {
-    return null
-  }
-
-  const index = path[path.length - 1]
-  const key = path[path.length - 2]
-
-  if (typeof index !== 'number' || (key !== 'children' && key !== 'args')) {
-    return null
-  }
-
-  const parentPath = path.slice(0, -2)
-  const parent = getNodeAtPath(root, parentPath)
-
-  return { parentPath, parent, key, index }
+function ownerOf(state: EditorState, depth = state.cursor.path.length): Owner | null {
+  if (depth === 0) return null
+  const path = state.cursor.path
+  const rowPath = path.slice(0, depth - 1)
+  const { atom: index, branch } = path[depth - 1]
+  return { rowPath, index, atom: requireRow(state.root, rowPath)[index], branch }
 }
 
-export function insertSiblingAfterAtPath(root: AstNode, path: NodePath): CommandResult | null {
-  const ctx = variadicContext(root, path)
-
-  if (!ctx) {
-    return null
-  }
-
-  const collection = getChildValue(ctx.parent, ctx.key)
-
-  if (!Array.isArray(collection)) {
-    return null
-  }
-
-  const next = [...collection]
-  next.splice(ctx.index + 1, 0, makePlaceholder())
-
-  return {
-    ast: replaceNodeAtPath(root, ctx.parentPath, setChildValue(ctx.parent, ctx.key, next)),
-    focusedPath: [...ctx.parentPath, ctx.key, ctx.index + 1],
-  }
+// Replace a structure atom by the contents of all its rows, in order.
+function unwrap(state: EditorState, owner: Owner, cursorOffset: number): EditorState {
+  const content = childRows(owner.atom).flatMap(([, r]) => r)
+  return splice(state, owner.rowPath, owner.index, 1, content, {
+    path: owner.rowPath,
+    offset: owner.index + cursorOffset,
+  })
 }
 
-// Mirror of insertSiblingAfterAtPath: inserts at the focused term's own
-// index, pushing it (and everything after) one slot to the right.
-export function insertSiblingBeforeAtPath(root: AstNode, path: NodePath): CommandResult | null {
-  const ctx = variadicContext(root, path)
-
-  if (!ctx) {
-    return null
-  }
-
-  const collection = getChildValue(ctx.parent, ctx.key)
-
-  if (!Array.isArray(collection)) {
-    return null
-  }
-
-  const next = [...collection]
-  next.splice(ctx.index, 0, makePlaceholder())
-
-  return {
-    ast: replaceNodeAtPath(root, ctx.parentPath, setChildValue(ctx.parent, ctx.key, next)),
-    focusedPath: [...ctx.parentPath, ctx.key, ctx.index],
-  }
+function displayName(name: string): string {
+  return getFunctionDefinition(name)?.latexName ?? name
 }
 
-// Typing a new atom (digit/letter/bracket) next to a complete term multiplies
-// it in implicitly — "4" typed after "t" gives "4t". `side` decides which
-// side of the focused term the new factor lands on: if focus is already a
-// child of a Multiply, it's spliced in as a sibling before/after; otherwise
-// the focused node is wrapped in a new Multiply with the factor before/after
-// it. Either way the new factor's own slot is what gets returned focused, so
-// callers can drop `factor` straight into it.
-export function insertImplicitFactorAtPath(
-  root: AstNode,
-  path: NodePath,
-  factor: AstNode,
-  side: CaretSide,
-): CommandResult {
-  const ctx = variadicContext(root, path)
+// ---------------------------------------------------------------------------
+// Typing
+// ---------------------------------------------------------------------------
 
-  const base =
-    ctx && ctx.parent.type === 'Multiply'
-      ? (side === 'before' ? insertSiblingBeforeAtPath : insertSiblingAfterAtPath)(root, path)!
-      : (side === 'before' ? insertMultiplyBeforeAtPath : insertMultiplyAtPath)(root, path)
-
-  return replaceFocusedNode(base.ast, base.focusedPath, factor)
+// Typed spellings of known functions -> function name ("arcsin" -> "asin").
+const FUNCTION_SPELLINGS = new Map<string, string>()
+for (const definition of Object.values(FUNCTION_REGISTRY)) {
+  FUNCTION_SPELLINGS.set(definition.name, definition.name)
+  FUNCTION_SPELLINGS.set(definition.latexName, definition.name)
 }
+const LONGEST_SPELLING = Math.max(...Array.from(FUNCTION_SPELLINGS.keys(), (s) => s.length))
 
-// A typed operator (e.g. "+") climbing past a *different*-typed variadic
-// parent (e.g. a Multiply) would normally wrap the whole parent — but if
-// the caret sits strictly mid-list there, that silently discards its exact
-// position: "4x" with the caret before "x", typing "+3", would become
-// "4x+3" instead of the intended "4+3x". Splitting the parent's children
-// at that gap and building the new operator's two sides directly from the
-// two halves (collapsing a lone survivor rather than wrapping it in a
-// redundant single-child Add/Multiply) keeps the caret's position
-// meaningful. `parentPath`/`index` come from climbForOperator's `splitAt`.
-export function splitVariadicAtCaret(
-  root: AstNode,
-  parentPath: NodePath,
-  index: number,
-  side: CaretSide,
-  newParentType: 'Add' | 'Multiply',
-): CommandResult {
-  const parentNode = getNodeAtPath(root, parentPath)
+// After a letter is typed: turn the letters just before the cursor into a
+// function atom when they spell a known function ("s", "i", "n" -> sin), and
+// extend a function just before the cursor ("cos" + "h" -> cosh).
+function recogniseFunctionName(state: EditorState): EditorState {
+  const { path, offset } = state.cursor
+  const current = requireRow(state.root, path)
+  const letter = current[offset - 1]
+  const previous = current[offset - 2]
 
-  if (parentNode.type !== 'Add' && parentNode.type !== 'Multiply') {
-    throw new Error('splitVariadicAtCaret expects an Add or Multiply parent')
-  }
-
-  const collection = parentNode.children
-  const splitIndex = side === 'before' ? index : index + 1
-
-  const collapse = (items: AstNode[]): AstNode => {
-    if (items.length === 1) {
-      return items[0]
+  if (isLetter(letter) && previous?.kind === 'function') {
+    const extended = FUNCTION_SPELLINGS.get(displayName(previous.name) + letter.value)
+    if (extended) {
+      return splice(state, path, offset - 2, 2, [func(extended)], { path, offset: offset - 1 })
     }
-
-    return parentNode.type === 'Add' ? { type: 'Add', children: items } : { type: 'Multiply', children: items }
   }
 
-  const leftItems = collection.slice(0, splitIndex)
-  const rightItems = collection.slice(splitIndex)
-  const left = collapse(leftItems)
-  const right = collapse(rightItems)
+  let letters = ''
+  for (let i = offset - 1; i >= 0 && letters.length < LONGEST_SPELLING; i--) {
+    const atom = current[i]
+    if (!isLetter(atom)) break
+    letters = atom.value + letters
+  }
 
-  const ast = replaceNodeAtPath(
-    root,
-    parentPath,
-    newParentType === 'Add' ? { type: 'Add', children: [left, right] } : { type: 'Multiply', children: [left, right] },
-  )
+  for (let length = letters.length; length >= 2; length--) {
+    const name = FUNCTION_SPELLINGS.get(letters.slice(-length))
+    if (name) {
+      const start = offset - length
+      return splice(state, path, start, length, [func(name)], { path, offset: start + 1 })
+    }
+  }
 
-  // The original leaf lands at the start of `rightItems` when splitting
-  // 'before' it, or the end of `leftItems` when splitting 'after' it —
-  // point the focus at wherever it actually ended up, so the caret's exact
-  // position (and side) survives the restructuring.
-  const focusedPath: NodePath =
-    side === 'before'
-      ? rightItems.length === 1
-        ? [...parentPath, 'children', 1]
-        : [...parentPath, 'children', 1, 'children', 0]
-      : leftItems.length === 1
-        ? [...parentPath, 'children', 0]
-        : [...parentPath, 'children', 0, 'children', leftItems.length - 1]
-
-  return { ast, focusedPath }
+  return state
 }
 
-export function removeVariadicChildAtPath(root: AstNode, path: NodePath): CommandResult | null {
-  const ctx = variadicContext(root, path)
+// Insert one glyph (digit, letter, operator, …) at the cursor.
+export function insertSymbol(value: string): Command {
+  return (state) => {
+    const { path, offset } = state.cursor
+    const next = splice(state, path, offset, 0, [symbol(value)], { path, offset: offset + 1 })
+    return /^[A-Za-z]$/.test(value) ? recogniseFunctionName(next) : next
+  }
+}
 
-  if (!ctx) {
-    return null
+// Insert a structure atom at the cursor and move into one of its rows.
+export function insertStructure(atom: Atom, branch: BranchName): Command {
+  return (state) => {
+    const { path, offset } = state.cursor
+    return splice(state, path, offset, 0, [atom], {
+      path: [...path, { atom: offset, branch }],
+      offset: 0,
+    })
+  }
+}
+
+// "/": the operand just before the cursor (everything back to the previous
+// operator) becomes the numerator, and the cursor goes to the denominator.
+// A bracketed operand loses its brackets: (x+1)/ gives x+1 over □. With
+// nothing before the cursor, both rows start empty and the cursor goes to
+// the numerator.
+export const insertFraction: Command = (state) => {
+  const { path, offset } = state.cursor
+  const current = requireRow(state.root, path)
+
+  let start = offset
+  while (start > 0 && !isOperator(current[start - 1])) start--
+
+  let numerator = current.slice(start, offset)
+  const only = numerator[0]
+  if (numerator.length === 1 && only.kind === 'group' && only.open === '(') {
+    numerator = only.body
   }
 
-  const collection = getChildValue(ctx.parent, ctx.key)
+  const branch: BranchName = numerator.length > 0 ? 'den' : 'num'
+  return splice(state, path, start, offset - start, [fraction(numerator, [])], {
+    path: [...path, { atom: start, branch }],
+    offset: 0,
+  })
+}
 
-  if (!Array.isArray(collection)) {
-    return null
-  }
+// "^": into the superscript right after the cursor, or the end of the one
+// right before it, or a new one.
+export const insertSuperscript: Command = (state) => {
+  const { path, offset } = state.cursor
+  const current = requireRow(state.root, path)
+  const after = current[offset]
+  const before = current[offset - 1]
 
-  // Collapse a two-element Add/Multiply to its surviving operand.
-  if ((ctx.parent.type === 'Add' || ctx.parent.type === 'Multiply') && collection.length === 2) {
-    const remaining = collection[ctx.index === 0 ? 1 : 0]
-
+  if (after?.kind === 'superscript') {
     return {
-      ast: replaceNodeAtPath(root, ctx.parentPath, remaining),
-      focusedPath: clonePath(ctx.parentPath),
+      root: state.root,
+      cursor: { path: [...path, { atom: offset, branch: 'sup' }], offset: 0 },
     }
   }
 
-  if (collection.length <= 1) {
-    return null
+  if (before?.kind === 'superscript') {
+    return {
+      root: state.root,
+      cursor: { path: [...path, { atom: offset - 1, branch: 'sup' }], offset: before.sup.length },
+    }
   }
 
-  const next = collection.filter((_, index) => index !== ctx.index)
+  return insertStructure(superscript(), 'sup')(state)
+}
 
-  return {
-    ast: replaceNodeAtPath(root, ctx.parentPath, setChildValue(ctx.parent, ctx.key, next)),
-    focusedPath: [...ctx.parentPath, ctx.key, Math.max(0, ctx.index - 1)],
+// The nearest enclosing bracket group opened with `open`, at any depth.
+function enclosingGroup(
+  state: EditorState,
+  open: GroupDelimiter,
+): { owner: Owner; depth: number } | null {
+  for (let depth = state.cursor.path.length; depth > 0; depth--) {
+    const owner = ownerOf(state, depth)!
+    if (owner.atom.kind === 'group' && owner.atom.open === open) return { owner, depth }
+  }
+  return null
+}
+
+// ")" or a closing "|": leave the enclosing group. Typed directly inside the
+// group, anything after the cursor moves out with it, so "(x|+1" + ")" gives
+// "(x)+1".
+function closeGroup(open: GroupDelimiter): Command {
+  return (state) => {
+    const found = enclosingGroup(state, open)
+    if (!found) return state
+
+    const { owner, depth } = found
+    const after: Cursor = { path: owner.rowPath, offset: owner.index + 1 }
+
+    if (depth !== state.cursor.path.length || owner.atom.kind !== 'group') {
+      return { root: state.root, cursor: after }
+    }
+
+    const body = owner.atom.body
+    const offset = state.cursor.offset
+    const closed = { ...owner.atom, body: body.slice(0, offset) }
+    return splice(state, owner.rowPath, owner.index, 1, [closed, ...body.slice(offset)], after)
   }
 }
 
-// Delete a placeholder: drop it from a variadic parent when possible, otherwise
-// collapse the parent to its first remaining non-placeholder child.
-export function deletePlaceholderAtPath(root: AstNode, path: NodePath): CommandResult {
-  const variadic = removeVariadicChildAtPath(root, path)
+export const openParen: Command = (state) => insertStructure(group([], '('), 'body')(state)
 
-  if (variadic) {
-    return variadic
-  }
+export const closeParen: Command = closeGroup('(')
 
-  const parentNodePath = fallbackFocusAfterDelete(path)
-  const parent = getNodeAtPath(root, parentNodePath)
+// "|" closes the absolute value the cursor is directly inside, otherwise
+// opens a new one.
+export const absBar: Command = (state) => {
+  const owner = ownerOf(state)
+  if (owner?.atom.kind === 'group' && owner.atom.open === '|') return closeGroup('|')(state)
+  return insertStructure(group([], '|'), 'body')(state)
+}
 
-  let keep: AstNode | null = null
+// Space: step out of the innermost structure, to just after it
+// (e.g. x^2 + space, then keep typing on the baseline).
+export const exitStructure: Command = (state) => {
+  const owner = ownerOf(state)
+  if (!owner) return state
+  return { root: state.root, cursor: { path: owner.rowPath, offset: owner.index + 1 } }
+}
 
-  for (const key of childKeysForNode(parent)) {
-    const value = getChildValue(parent, key)
+// ---------------------------------------------------------------------------
+// Deleting
+// ---------------------------------------------------------------------------
 
-    if (value === null || Array.isArray(value)) {
-      continue
+// Backspace.
+// - After a symbol: delete it.
+// - After a function: remove its last letter ("sin" -> "si"), so a
+//   recognised name can be undone letter by letter.
+// - After a structure: step into it (its last row, at the end) — or delete it
+//   if all its rows are empty.
+// - At the start of a row inside a structure: delete the structure if it is
+//   empty; from a later row, move to the end of the previous row; from the
+//   first row, remove the structure but keep its content ("(x+1" -> "x+1").
+// - At the start of the equation: nothing (returns the same state).
+export const deleteBackward: Command = (state) => {
+  const { path, offset } = state.cursor
+  const current = requireRow(state.root, path)
+
+  if (offset > 0) {
+    const atom = current[offset - 1]
+    const start = offset - 1
+
+    if (atom.kind === 'symbol') {
+      return splice(state, path, start, 1, [], { path, offset: start })
     }
 
-    if (value.type !== 'Placeholder') {
-      keep = value
-      break
+    if (atom.kind === 'function') {
+      const letters = row(displayName(atom.name).slice(0, -1))
+      return splice(state, path, start, 1, letters, { path, offset: start + letters.length })
+    }
+
+    if (isEmptyStructure(atom)) {
+      return splice(state, path, start, 1, [], { path, offset: start })
+    }
+
+    const rows = childRows(atom)
+    const [branch, last] = rows[rows.length - 1]
+    return {
+      root: state.root,
+      cursor: { path: [...path, { atom: start, branch }], offset: last.length },
     }
   }
 
-  return {
-    ast: replaceNodeAtPath(root, parentNodePath, keep ?? makePlaceholder()),
-    focusedPath: clonePath(parentNodePath),
+  const owner = ownerOf(state)
+  if (!owner) return state
+
+  if (isEmptyStructure(owner.atom)) {
+    return splice(state, owner.rowPath, owner.index, 1, [], {
+      path: owner.rowPath,
+      offset: owner.index,
+    })
+  }
+
+  const rows = childRows(owner.atom)
+  const index = rows.findIndex(([name]) => name === owner.branch)
+
+  if (index > 0) {
+    const [branch, previous] = rows[index - 1]
+    return {
+      root: state.root,
+      cursor: { path: [...owner.rowPath, { atom: owner.index, branch }], offset: previous.length },
+    }
+  }
+
+  return unwrap(state, owner, 0)
+}
+
+// Delete (forward delete): the mirror image of Backspace.
+export const deleteForward: Command = (state) => {
+  const { path, offset } = state.cursor
+  const current = requireRow(state.root, path)
+
+  if (offset < current.length) {
+    const atom = current[offset]
+
+    if (atom.kind === 'symbol') {
+      return splice(state, path, offset, 1, [], { path, offset })
+    }
+
+    if (atom.kind === 'function') {
+      return splice(state, path, offset, 1, row(displayName(atom.name).slice(1)), { path, offset })
+    }
+
+    if (isEmptyStructure(atom)) {
+      return splice(state, path, offset, 1, [], { path, offset })
+    }
+
+    const [branch] = childRows(atom)[0]
+    return { root: state.root, cursor: { path: [...path, { atom: offset, branch }], offset: 0 } }
+  }
+
+  const owner = ownerOf(state)
+  if (!owner) return state
+
+  if (isEmptyStructure(owner.atom)) {
+    return splice(state, owner.rowPath, owner.index, 1, [], {
+      path: owner.rowPath,
+      offset: owner.index,
+    })
+  }
+
+  const rows = childRows(owner.atom)
+  const index = rows.findIndex(([name]) => name === owner.branch)
+
+  if (index < rows.length - 1) {
+    const [branch] = rows[index + 1]
+    return {
+      root: state.root,
+      cursor: { path: [...owner.rowPath, { atom: owner.index, branch }], offset: 0 },
+    }
+  }
+
+  const contentLength = rows.reduce((sum, [, r]) => sum + r.length, 0)
+  return unwrap(state, owner, contentLength)
+}
+
+// ---------------------------------------------------------------------------
+// Placeholders
+// ---------------------------------------------------------------------------
+
+// Tab / Shift+Tab: the next (or previous) empty row, wrapping around. Returns
+// the same state if there is no other empty row.
+export function nextPlaceholder(direction: 'forward' | 'backward'): Command {
+  return (state) => {
+    const positions = allPositions(state.root)
+    const empty = positions.filter(({ path }) => requireRow(state.root, path).length === 0)
+    if (empty.length === 0) return state
+
+    const here = positions.findIndex((p) => cursorsEqual(p, state.cursor))
+    const ordered =
+      direction === 'forward'
+        ? [...positions.slice(here + 1), ...positions.slice(0, here + 1)]
+        : [...positions.slice(0, here).reverse(), ...positions.slice(here).reverse()]
+
+    const target = ordered.find((p) => requireRow(state.root, p.path).length === 0)
+    if (!target || cursorsEqual(target, state.cursor)) return state
+    return { root: state.root, cursor: target }
   }
 }
 
-// Delete an empty group ("()" with a placeholder inside): drop it from a
-// variadic parent when possible, otherwise collapse it to a bare
-// placeholder in place. This is what makes backspacing empty parentheses a
-// single step whether focus is on the group itself or on the placeholder
-// inside it — the group carries no content worth preserving, so unlike
-// unwrapNodeAtPath it never leaves the placeholder behind as an orphaned
-// sibling that needs a second backspace to clear.
-export function deleteEmptyGroupAtPath(root: AstNode, groupPath: NodePath): CommandResult {
-  const variadic = removeVariadicChildAtPath(root, groupPath)
+// ---------------------------------------------------------------------------
+// Named commands ("\frac", "\sqrt", "\alpha", toolbar buttons)
+// ---------------------------------------------------------------------------
 
-  if (variadic) {
-    return variadic
+// A function head followed by an empty bracket group, cursor inside: sin(□).
+export function insertFunction(name: string): Command {
+  return (state) => {
+    const { path, offset } = state.cursor
+    return splice(state, path, offset, 0, [func(name), group([], '(')], {
+      path: [...path, { atom: offset + 1, branch: 'body' }],
+      offset: 0,
+    })
+  }
+}
+
+export const insertSquareRoot: Command = (state) => insertStructure(root(), 'body')(state)
+export const insertNthRoot: Command = (state) => insertStructure(root([], []), 'index')(state)
+export const insertAbs: Command = (state) => insertStructure(group([], '|'), 'body')(state)
+export const insertDerivative: Command = (state) => insertStructure(derivative(), 'expr')(state)
+
+// The command for "\name". Unknown names insert a named symbol, so
+// "\alpha" gives α and "\speed" an identifier called speed.
+export function namedCommand(name: string): Command {
+  switch (name) {
+    case 'frac':
+    case 'fraction':
+      return insertStructure(fraction(), 'num')
+    case 'sqrt':
+      return insertSquareRoot
+    case 'root':
+      return insertNthRoot
+    case 'abs':
+      return insertAbs
+    case 'dd':
+    case 'diff':
+    case 'derivative':
+      return insertDerivative
+    case 'pow':
+    case 'power':
+      return insertSuperscript
   }
 
-  return replaceNodeWithPlaceholder(root, groupPath)
+  const spelled = FUNCTION_SPELLINGS.get(name)
+  if (spelled) return insertFunction(spelled)
+
+  return (state) => {
+    const { path, offset } = state.cursor
+    return splice(state, path, offset, 0, [symbol(name)], { path, offset: offset + 1 })
+  }
 }

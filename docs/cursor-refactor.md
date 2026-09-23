@@ -1,6 +1,6 @@
 # Cursor refactor: design record
 
-_Recorded 2026-09-23. Status: accepted; implementation in progress on `refactor/cursor-model` (steps 1–3 done)._
+_Recorded 2026-09-23. Status: accepted; implementation in progress on `refactor/cursor-model` (steps 1–4 done)._
 
 ## Background
 
@@ -110,6 +110,29 @@ the UI can mark them.
 - The development page is `playground.html` (under `npm run dev`, open
   `/playground.html`). It is not part of the production build.
 
+### Editing behaviour (step 4)
+
+`editor/commands.ts` holds pure commands (`EditorState → EditorState`); a no-op returns
+the same object. `editor/keymap.ts` maps keys to them, and `MathField` runs them.
+
+| Key | Behaviour |
+|---|---|
+| digits, letters, `+ - = ,` | Insert at the cursor. `*` inserts `·`. |
+| letters spelling a function | Become a function atom as you type (`sin`, `cosh`, `arcsin`; longest match wins). Backspace turns it back into letters (`sin` → `si`). |
+| `/` | The operand before the cursor (back to the previous operator) becomes the numerator; the cursor goes to the denominator. `(x+1)/` drops the brackets. With nothing before the cursor, the cursor goes to an empty numerator. |
+| `^` | Enters the adjacent superscript if there is one, otherwise adds one. |
+| `(` `)` | `(` inserts an empty group with the cursor inside. `)` leaves the enclosing group; typed directly inside it, the atoms after the cursor move out (`(x‸+1` → `(x)‸+1`). With no open group it does nothing. |
+| `\|` | Closes the absolute value the cursor is directly inside, otherwise opens one. |
+| Space | Steps out of the innermost structure. |
+| Backspace | Deletes the symbol before the cursor. After a structure it steps into it (or deletes it if empty). At the start of a later row it moves to the previous row; at the start of the first row it removes the structure but keeps its content. |
+| Delete | The mirror image of Backspace. |
+| Tab / Shift+Tab | Next / previous empty slot, wrapping. |
+| `\name` | Command mode (workbench): `frac sqrt root abs dd pow`, function names (inserted with brackets), anything else becomes a named symbol (`\alpha`). |
+
+Handled by the workbench, from keys `MathField` leaves unused: Enter (new line); ↑/↓
+with no row above/below, and Alt+↑/↓ (previous/next line); Backspace in an empty
+line (remove it); Ctrl/Cmd+Z and Shift+Z / Y (undo/redo, one step per edit).
+
 ### Testing
 
 - **Unit tests** (Vitest, `npm test`): `tests/*.spec.ts`. Pure model code (cursor
@@ -125,25 +148,19 @@ the UI can mark them.
   them with `npm run test:e2e:visual -- --update-snapshots`.
 - One-off setup after `npm install`: `npx playwright install chromium`.
 
-## Keep / replace / delete
+## What was kept, replaced and removed
 
-**Keep:** `types/ast.ts`; `renderers/mathjson.ts`, `mathml.ts`, `latex.ts`;
-`FUNCTION_REGISTRY` in `registry/nodes.ts`; undo/redo snapshots, the multi-equation list
-and command mode in the workbench.
+**Kept:** `types/ast.ts`; `renderers/mathjson.ts`, `mathml.ts`, `latex.ts`; `registry/nodes.ts`
+(`FUNCTION_REGISTRY`; `NODE_REGISTRY` is now unused); the workbench's undo/redo,
+multi-line list, command mode, toolbar and output panels.
 
-**Replace:**
+**Replaced:** `editor/commands.ts` (now layout-tree commands); `EquationWorkbench.vue`
+(now built on `MathField`); the `EditorState` type (now `{ root, cursor }`, in
+`editor/commands.ts`).
 
-- `EditorState` → `{ root, cursor, anchor? }`
-- `navigation.ts` → `editor/cursor.ts`
-- `commands.ts` → layout-tree editing commands
-- `interactiveLatex.ts` → renders rows with `\htmlData` tags
-- `EquationEditor.vue` → caret overlay and click-to-gap hit-testing only; keep the
-  measuring code from `focusRect.ts`
-- new `parse.ts`: rows → `AstNode`, with empty rows becoming `Placeholder`
-
-**Delete:** the focus ring and `me-focused` code, `selectParent` and `selectFirstChild`,
-the `caretSide` branches in the typing handlers, `tests/focusRect.spec.ts`. The navigation
-and command specs will be rewritten.
+**Removed:** `editor/navigation.ts`, `editor/focusRect.ts`, `renderers/interactiveLatex.ts`,
+`components/EquationEditor.vue`, `types/editor.ts`, and their tests
+(`navigation.spec.ts`, `focusRect.spec.ts`; `commands.spec.ts` was rewritten).
 
 ## Plan
 
@@ -152,3 +169,13 @@ and command specs will be rewritten.
 2. `editor/parse.ts`, tested against the `AstNode` shapes the current tests expect.
 3. Renderer: rows → tagged LaTeX, plus the caret overlay and hit-testing.
 4. Rewire the workbench to the new commands; remove the old code.
+
+### Possible next steps
+
+- Selection (Shift+arrows, drag) as `anchor` + `cursor` in one row, with `/`, `(` and
+  `\sqrt` wrapping the selection; copy and paste.
+- Subscripts (`_`), if needed for variable names like x₁.
+- Marking parser diagnostics on the offending atom (each diagnostic carries its
+  `atomId`).
+- Coalescing consecutive typing into one undo step.
+- Removing `NODE_REGISTRY` if nothing needs it.

@@ -1,12 +1,18 @@
 <script setup lang="ts">
-// A cursor-only math surface: renders a layout row with KaTeX, draws the
-// caret as an overlay, and turns arrow keys and clicks into new cursor
-// positions. It never changes the equation itself; editing commands arrive
-// in step 4 (keys it doesn't handle bubble up to the parent).
+// The equation editing surface: renders a layout row with KaTeX, draws the
+// caret as an overlay, moves the cursor with the arrow keys and clicks, and
+// runs editing commands for typed keys (editor/keymap.ts).
+//
+// It owns no state: navigation emits `update:cursor`, edits emit `edit` with
+// the new { root, cursor } (so the parent can record undo history). Keys it
+// doesn't use bubble up: Enter, Ctrl/Cmd/Alt shortcuts, ↑/↓ with no row
+// above/below, and Backspace/Delete/Tab when they have nothing to do here
+// (e.g. Backspace in an empty equation).
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import katex from 'katex'
 
 import { caretBox, hitTest, nearestOffset } from '../editor/caretGeometry'
+import type { EditorState } from '../editor/commands'
 import {
   type Cursor,
   type PickOffset,
@@ -17,6 +23,7 @@ import {
   moveRight,
   moveUp,
 } from '../editor/cursor'
+import { commandForKey } from '../editor/keymap'
 import type { Row } from '../editor/layout'
 import { KATEX_EDITOR_OPTIONS, rowToLatex } from '../renderers/layoutLatex'
 
@@ -25,12 +32,14 @@ const props = withDefaults(
     modelValue: Row
     cursor: Cursor
     active?: boolean
+    readonly?: boolean
   }>(),
-  { active: true },
+  { active: true, readonly: false },
 )
 
 const emit = defineEmits<{
   'update:cursor': [cursor: Cursor]
+  edit: [state: EditorState]
 }>()
 
 const surfaceEl = ref<HTMLElement | null>(null)
@@ -122,6 +131,7 @@ function handleKeydown(event: KeyboardEvent) {
       next = cursorAtEnd(row)
       break
     default:
+      handleEditKey(event)
       return
   }
 
@@ -130,6 +140,27 @@ function handleKeydown(event: KeyboardEvent) {
   if (next) {
     emit('update:cursor', next)
   }
+}
+
+// Keys that do nothing here bubble up for the parent to use.
+const BUBBLE_WHEN_UNUSED = new Set(['Backspace', 'Delete', 'Tab'])
+
+function handleEditKey(event: KeyboardEvent) {
+  if (props.readonly) return
+
+  const command = commandForKey(event)
+  if (!command) return
+
+  const state: EditorState = { root: props.modelValue, cursor: props.cursor }
+  const next = command(state)
+
+  if (next === state) {
+    if (!BUBBLE_WHEN_UNUSED.has(event.key)) event.preventDefault()
+    return
+  }
+
+  event.preventDefault()
+  emit('edit', next)
 }
 
 function handleMousedown(event: MouseEvent) {

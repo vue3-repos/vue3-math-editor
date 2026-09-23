@@ -2,7 +2,6 @@
 // Playwright tests in tests/e2e import these too, so the expected cursor
 // positions are computed from the same trees the page renders.
 
-import type { Cursor } from '../editor/cursor'
 import {
   type Row,
   derivative,
@@ -70,9 +69,5 @@ export const SAMPLES: readonly Sample[] = [
   },
 ]
 
-// How the playground prints a cursor, e.g. "0.num › 0.den @ 1". The e2e tests
-// assert against this text.
-export function describeCursor(cursor: Cursor): string {
-  const path = cursor.path.map((s) => `${s.atom}.${s.branch}`).join(' › ')
-  return `${path || 'root'} @ ${cursor.offset}`
-}
+// How the playground prints a cursor, e.g. "0.num › 0.den @ 1".
+export { describeCursor } from '../editor/cursor'

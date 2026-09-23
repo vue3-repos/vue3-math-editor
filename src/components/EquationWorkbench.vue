@@ -1,4 +1,12 @@
 <script setup lang="ts">
+// The equation workbench: a list of equation lines, each a MathField, plus a
+// toolbar, undo/redo, "\" command mode and live output panels.
+//
+// State is one EditorState ({ root, cursor }) per line. MathField runs the
+// per-key editing commands and emits the new state; the workbench records
+// undo history and handles what spans lines (Enter, ↑/↓ between lines,
+// removing an empty line) and command mode. The semantic AST shown in the
+// output panels is parsed from the active line's layout tree.
 import { computed, nextTick, ref } from 'vue'
 import katex from 'katex'
 import Button from 'primevue/button'
@@ -6,85 +14,44 @@ import Card from 'primevue/card'
 import Divider from 'primevue/divider'
 import Tag from 'primevue/tag'
 
-import EquationEditor from './EquationEditor.vue'
-
+import MathField from './MathField.vue'
 import {
-  collapseSelection,
-  convertIdentifierToFunctionCallAtPath,
-  deleteEmptyGroupAtPath,
-  deletePlaceholderAtPath,
-  getNodeAtPath,
-  getNextPlaceholderPath,
-  insertAbsAtPath,
-  insertAddAtPath,
-  insertDerivativeAtPath,
-  insertEqualAtPath,
-  insertFractionAtPath,
-  insertFunctionAtPath,
-  insertGroupAtPath,
-  insertImplicitFactorAtPath,
-  insertMultiplyAtPath,
-  insertMultiplyBeforeAtPath,
-  insertNegateAtPath,
-  insertPowerAtPath,
-  insertRootAtPath,
-  insertSiblingAfterAtPath,
-  insertSiblingBeforeAtPath,
-  insertSubtractAtPath,
-  isPlaceholderAtPath,
-  replaceFocusedNode,
-  replaceNodeWithPlaceholder,
-  resolveCommandPath,
-  splitVariadicAtCaret,
-  unwrapNodeAtPath,
-  type CommandResult,
-  type NodeCommand,
+  type Command,
+  type EditorState,
+  emptyState,
+  insertAbs,
+  insertDerivative,
+  insertFraction,
+  insertFunction,
+  insertNthRoot,
+  insertSquareRoot,
+  insertSuperscript,
+  insertSymbol,
+  namedCommand,
 } from '../editor/commands'
-import {
-  climbForOperator,
-  firstChildNodePath,
-  parentNodePath,
-  pathsEqual,
-  stepCaret,
-} from '../editor/navigation'
+import { type Cursor, cursorAtEnd, describeCursor } from '../editor/cursor'
+import { parseRow } from '../editor/parse'
 import { astToLatex } from '../renderers/latex'
 import { renderMathJson } from '../renderers/mathjson'
 import { astToContentMathML } from '../renderers/mathml'
-import { getFunctionDefinition } from '../registry/nodes'
-import type { AstNode } from '../types/ast'
-import type { EditorState, NodePath } from '../types/editor'
 
-function createEditorState(ast: AstNode | null = null): EditorState {
-  return {
-    ast,
-    focusedPath: [],
-    selection: {
-      anchor: [],
-      focus: [],
-    },
-    mode: 'insert',
-    caretSide: 'after',
-  }
-}
-
-const editorStates = ref<EditorState[]>([createEditorState()])
-const activeEquationIndex = ref(0)
-const editorSurface = ref<HTMLElement | null>(null)
-
-// Buffer for the digits the user typed into the focused Number node, so that
-// intermediate states like "3." and "3.50" survive round-trips through the
-// numeric AST value.
-const numberEdit = ref<{ key: string; text: string } | null>(null)
+const equations = ref<EditorState[]>([emptyState()])
+const activeIndex = ref(0)
+const fieldRefs = ref<Array<InstanceType<typeof MathField> | null>>([])
 
 // Non-null while a "\..." command is being typed (Mathfield-style).
 const commandBuffer = ref<string | null>(null)
 
-function currentState(): EditorState {
-  return editorStates.value[activeEquationIndex.value]
+function active(): EditorState {
+  return equations.value[activeIndex.value]
 }
 
-function focusSurface() {
-  editorSurface.value?.focus()
+function setEquation(index: number, state: EditorState) {
+  equations.value[index] = state
+}
+
+function focusActive() {
+  void nextTick(() => fieldRefs.value[activeIndex.value]?.focus())
 }
 
 // ---------------------------------------------------------------------------
@@ -92,7 +59,7 @@ function focusSurface() {
 // ---------------------------------------------------------------------------
 
 interface Snapshot {
-  states: EditorState[]
+  equations: EditorState[]
   active: number
 }
 
@@ -101,829 +68,175 @@ const redoStack = ref<Snapshot[]>([])
 
 function takeSnapshot(): Snapshot {
   return JSON.parse(
-    JSON.stringify({ states: editorStates.value, active: activeEquationIndex.value }),
+    JSON.stringify({ equations: equations.value, active: activeIndex.value }),
   ) as Snapshot
 }
 
 function pushHistory() {
   undoStack.value.push(takeSnapshot())
-
-  if (undoStack.value.length > 200) {
-    undoStack.value.shift()
-  }
-
+  if (undoStack.value.length > 200) undoStack.value.shift()
   redoStack.value = []
 }
 
-function restoreSnapshot(snapshot: Snapshot) {
-  editorStates.value = snapshot.states
-  activeEquationIndex.value = Math.min(snapshot.active, snapshot.states.length - 1)
-  numberEdit.value = null
-  focusSurface()
+function restore(snapshot: Snapshot) {
+  equations.value = snapshot.equations
+  activeIndex.value = Math.min(snapshot.active, snapshot.equations.length - 1)
+  focusActive()
 }
 
 function undo() {
   const snapshot = undoStack.value.pop()
-
-  if (!snapshot) {
-    return
-  }
-
+  if (!snapshot) return
   redoStack.value.push(takeSnapshot())
-  restoreSnapshot(snapshot)
+  restore(snapshot)
 }
 
 function redo() {
   const snapshot = redoStack.value.pop()
-
-  if (!snapshot) {
-    return
-  }
-
+  if (!snapshot) return
   undoStack.value.push(takeSnapshot())
-  restoreSnapshot(snapshot)
+  restore(snapshot)
 }
 
 const canUndo = computed(() => undoStack.value.length > 0)
 const canRedo = computed(() => redoStack.value.length > 0)
 
 // ---------------------------------------------------------------------------
-// Command application
+// Editing
 // ---------------------------------------------------------------------------
 
-function applyCommandResult(result: CommandResult) {
+function handleEdit(index: number, next: EditorState) {
   pushHistory()
-
-  const state = currentState()
-  state.ast = result.ast
-  state.focusedPath = result.focusedPath
-  state.selection = collapseSelection(result.focusedPath)
-  state.caretSide = 'after'
-  numberEdit.value = null
+  setEquation(index, next)
 }
 
-function rootAstForCommand(): AstNode {
-  return currentState().ast ?? { type: 'Placeholder' }
+function handleCursor(index: number, cursor: Cursor) {
+  setEquation(index, { ...equations.value[index], cursor })
 }
 
-function wrapFocused(command: NodeCommand) {
-  const path = resolveCommandPath(currentState().focusedPath)
-  applyCommandResult(command(rootAstForCommand(), path))
-}
+// Run a command on the active line (toolbar buttons, command mode).
+function run(command: Command) {
+  const state = active()
+  const next = command(state)
 
-function insertPower() {
-  wrapFocused(insertPowerAtPath)
-}
-
-function insertDerivative() {
-  wrapFocused(insertDerivativeAtPath)
-}
-
-function insertAbs() {
-  wrapFocused(insertAbsAtPath)
-}
-
-function insertRoot(withDegree: boolean) {
-  wrapFocused((root, path) => insertRootAtPath(root, path, withDegree))
-}
-
-function insertFunction(name: string) {
-  wrapFocused((root, path) => insertFunctionAtPath(root, path, name))
-}
-
-// Apply a typed binary operator at the precedence-correct level: "4*t-3"
-// subtracts from the whole product, "2+3*4" keeps the product tight, and
-// explicit brackets or structural slots (fractions, roots, ...) stop the climb.
-function wrapWithPrecedence(
-  command: NodeCommand,
-  operatorPrecedence: number,
-  siblingParentType: 'Add' | 'Multiply' | null = null,
-) {
-  const state = currentState()
-
-  if (!state.ast) {
-    wrapFocused(command)
-    return
+  if (next !== state) {
+    pushHistory()
+    setEquation(activeIndex.value, next)
   }
 
-  const path = resolveCommandPath(state.focusedPath)
-  const side = state.caretSide
-  const climbed = climbForOperator(state.ast, path, side, operatorPrecedence, siblingParentType)
-
-  if (climbed.splitAt && siblingParentType) {
-    const result = splitVariadicAtCaret(
-      state.ast,
-      climbed.splitAt.parentPath,
-      climbed.splitAt.index,
-      side,
-      siblingParentType,
-    )
-    applyCommandResult(result)
-    // The split preserves *where* the caret points, not just *that* it
-    // does — typing the next character (e.g. "3" in "4" + "3x") still
-    // needs to land on the correct side of it.
-    currentState().caretSide = side
-    return
-  }
-
-  if (climbed.siblingParent) {
-    const insertSibling = side === 'before' ? insertSiblingBeforeAtPath : insertSiblingAfterAtPath
-    const result = insertSibling(state.ast, climbed.path)
-
-    if (result) {
-      applyCommandResult(result)
-      return
-    }
-  }
-
-  applyCommandResult(command(state.ast, climbed.path))
-}
-
-function insertFraction() {
-  wrapWithPrecedence(insertFractionAtPath, 3)
-}
-
-function insertEqual() {
-  wrapWithPrecedence(insertEqualAtPath, 1)
-}
-
-function insertSubtract() {
-  wrapWithPrecedence(insertSubtractAtPath, 2)
-}
-
-function insertAddSmart() {
-  wrapWithPrecedence(insertAddAtPath, 2, 'Add')
-}
-
-function insertMultiplySmart() {
-  const command =
-    currentState().caretSide === 'before' ? insertMultiplyBeforeAtPath : insertMultiplyAtPath
-  wrapWithPrecedence(command, 3, 'Multiply')
-}
-
-// "-" on an empty slot means unary minus; on filled content it subtracts.
-function insertMinusSmart() {
-  const state = currentState()
-  const path = resolveCommandPath(state.focusedPath)
-
-  if (!state.ast || isPlaceholderAtPath(state.ast, path)) {
-    wrapFocused(insertNegateAtPath)
-    return
-  }
-
-  insertSubtract()
-}
-
-function unwrapFocusedNode() {
-  const state = currentState()
-
-  if (!state.ast) {
-    return
-  }
-
-  applyCommandResult(unwrapNodeAtPath(state.ast, resolveCommandPath(state.focusedPath)))
+  focusActive()
 }
 
 // ---------------------------------------------------------------------------
-// Equation rows
+// Lines
 // ---------------------------------------------------------------------------
 
-function setActiveEquation(index: number) {
-  activeEquationIndex.value = index
-  focusSurface()
-}
-
-function focusEquationPath(index: number, path: NodePath) {
-  activeEquationIndex.value = index
-
-  const state = currentState()
-  state.focusedPath = path
-  state.selection = collapseSelection(path)
-  state.caretSide = 'after'
-  numberEdit.value = null
-  focusSurface()
-}
-
-function addEquationAfterActive() {
+function addLineAfterActive() {
   pushHistory()
-
-  const insertAt = activeEquationIndex.value + 1
-  editorStates.value.splice(insertAt, 0, createEditorState())
-  activeEquationIndex.value = insertAt
-
-  void nextTick(focusSurface)
+  const index = activeIndex.value + 1
+  equations.value.splice(index, 0, emptyState())
+  activeIndex.value = index
+  focusActive()
 }
 
-function moveActiveEquation(direction: 'up' | 'down') {
-  const delta = direction === 'down' ? 1 : -1
-  const nextIndex = activeEquationIndex.value + delta
-
-  if (nextIndex < 0 || nextIndex >= editorStates.value.length) {
-    return
-  }
-
-  activeEquationIndex.value = nextIndex
-  void nextTick(focusSurface)
+function moveToLine(index: number) {
+  if (index < 0 || index >= equations.value.length) return
+  activeIndex.value = index
+  focusActive()
 }
 
-function removeActiveEquationIfPossible() {
-  if (editorStates.value.length <= 1) {
-    return
-  }
+function removeActiveLine() {
+  if (equations.value.length <= 1) return
 
   pushHistory()
-  editorStates.value.splice(activeEquationIndex.value, 1)
-  activeEquationIndex.value = Math.max(0, activeEquationIndex.value - 1)
-
-  void nextTick(focusSurface)
+  equations.value.splice(activeIndex.value, 1)
+  activeIndex.value = Math.max(0, activeIndex.value - 1)
+  // Continue at the end of the line above.
+  const state = active()
+  setEquation(activeIndex.value, { ...state, cursor: cursorAtEnd(state.root) })
+  focusActive()
 }
 
 // ---------------------------------------------------------------------------
-// Typing
+// Keyboard: command mode and shortcuts (capture phase, before MathField)
 // ---------------------------------------------------------------------------
-
-function numberTextFor(path: NodePath, node: { value: number }): string {
-  const key = JSON.stringify(path)
-
-  if (numberEdit.value && numberEdit.value.key === key) {
-    return numberEdit.value.text
-  }
-
-  return String(node.value)
-}
-
-function startEquationWith(node: AstNode) {
-  pushHistory()
-
-  const state = currentState()
-  state.ast = node
-  state.focusedPath = []
-  state.selection = collapseSelection([])
-  state.caretSide = 'after'
-}
-
-// Typing a letter/digit right after a complete term multiplies implicitly,
-// mirroring how "2x" is entered in Mathfield. Which side of the focused term
-// the new factor lands on follows the caret: 'after' (the default) appends,
-// 'before' (reached via ArrowLeft) inserts ahead of it instead.
-function insertImplicitFactor(factor: AstNode) {
-  const state = currentState()
-
-  if (!state.ast) {
-    return
-  }
-
-  const path = resolveCommandPath(state.focusedPath)
-  applyCommandResult(insertImplicitFactorAtPath(state.ast, path, factor, state.caretSide))
-}
-
-function typeLetter(char: string) {
-  const state = currentState()
-
-  if (!state.ast) {
-    startEquationWith({ type: 'Identifier', name: char })
-    return
-  }
-
-  const path = resolveCommandPath(state.focusedPath)
-  const node = getNodeAtPath(state.ast, path)
-
-  if (node.type === 'Placeholder') {
-    applyCommandResult(replaceFocusedNode(state.ast, path, { type: 'Identifier', name: char }))
-    return
-  }
-
-  // Letters always extend the same identifier's name, regardless of caret
-  // side — building a name from either end is unambiguous (unlike a digit
-  // next to an identifier, see typeDigit below).
-  if (node.type === 'Identifier') {
-    const name = state.caretSide === 'before' ? `${char}${node.name}` : `${node.name}${char}`
-    applyCommandResult(replaceFocusedNode(state.ast, path, { ...node, name }))
-    return
-  }
-
-  insertImplicitFactor({ type: 'Identifier', name: char })
-}
-
-function typeDigit(digit: string) {
-  const state = currentState()
-
-  if (!state.ast) {
-    startEquationWith({ type: 'Number', value: Number(digit) })
-    numberEdit.value = { key: JSON.stringify([]), text: digit }
-    return
-  }
-
-  const path = resolveCommandPath(state.focusedPath)
-  const node = getNodeAtPath(state.ast, path)
-
-  if (node.type === 'Placeholder') {
-    applyCommandResult(replaceFocusedNode(state.ast, path, { type: 'Number', value: Number(digit) }))
-    numberEdit.value = { key: JSON.stringify(path), text: digit }
-    return
-  }
-
-  // Digits always extend the same number's digit string, regardless of
-  // caret side — "13" is unambiguously one number, however it was built.
-  if (node.type === 'Number') {
-    const text =
-      state.caretSide === 'before'
-        ? `${digit}${numberTextFor(path, node)}`
-        : `${numberTextFor(path, node)}${digit}`
-    applyCommandResult(replaceFocusedNode(state.ast, path, { ...node, value: Number(text) }))
-    numberEdit.value = { key: JSON.stringify(path), text }
-    return
-  }
-
-  // A digit right after an identifier is ambiguous — "x1" as a subscripted
-  // variable name (the default, caret 'after') vs. "3" as a new coefficient
-  // multiplied onto "t" (caret 'before', e.g. after pressing ArrowLeft).
-  if (node.type === 'Identifier' && state.caretSide === 'after') {
-    applyCommandResult(
-      replaceFocusedNode(state.ast, path, { ...node, name: `${node.name}${digit}` }),
-    )
-    return
-  }
-
-  insertImplicitFactor({ type: 'Number', value: Number(digit) })
-
-  const focusedPath = currentState().focusedPath
-
-  if (focusedPath) {
-    numberEdit.value = { key: JSON.stringify(focusedPath), text: digit }
-  }
-}
-
-function typeDecimalPoint() {
-  const state = currentState()
-
-  if (!state.ast) {
-    startEquationWith({ type: 'Number', value: 0 })
-    numberEdit.value = { key: JSON.stringify([]), text: '0.' }
-    return
-  }
-
-  const path = resolveCommandPath(state.focusedPath)
-  const node = getNodeAtPath(state.ast, path)
-
-  if (node.type === 'Placeholder') {
-    applyCommandResult(replaceFocusedNode(state.ast, path, { type: 'Number', value: 0 }))
-    numberEdit.value = { key: JSON.stringify(path), text: '0.' }
-    return
-  }
-
-  if (node.type === 'Number') {
-    const text = numberTextFor(path, node)
-
-    if (!text.includes('.')) {
-      numberEdit.value = { key: JSON.stringify(path), text: `${text}.` }
-    }
-  }
-}
-
-function handleOpenParen() {
-  const state = currentState()
-  const path = resolveCommandPath(state.focusedPath)
-
-  // On an empty slot, open a bracket group to type into: (□)
-  if (!state.ast || isPlaceholderAtPath(state.ast, path)) {
-    applyCommandResult(insertGroupAtPath(rootAstForCommand(), path))
-    return
-  }
-
-  const node = getNodeAtPath(state.ast, path)
-
-  // "sin(" turns the identifier into a function call, starting with an
-  // empty argument rather than repeating the identifier as its own argument.
-  // Only when typed right after it (caret 'after') — with the caret
-  // positioned 'before' instead, "(" means "start a new group ahead of
-  // this term," same as any other implicit-factor insertion.
-  if (node.type === 'Identifier' && state.caretSide === 'after') {
-    applyCommandResult(convertIdentifierToFunctionCallAtPath(state.ast, path))
-    return
-  }
-
-  // After a complete term, "(" starts a multiplied bracket group: 4(□), (x+2)(□)
-  insertImplicitFactor({ type: 'Group', value: { type: 'Placeholder' } })
-
-  const focusedPath = currentState().focusedPath
-
-  if (focusedPath) {
-    focusEquationPath(activeEquationIndex.value, [...focusedPath, 'value'])
-  }
-}
-
-// ")" steps out of the innermost bracket group and selects it, so a following
-// operator (e.g. ^) applies to the bracketed expression as a whole.
-function handleCloseParen() {
-  const state = currentState()
-
-  if (!state.ast) {
-    return
-  }
-
-  const path = resolveCommandPath(state.focusedPath)
-
-  for (let parent = parentNodePath(path); parent; parent = parentNodePath(parent)) {
-    if (getNodeAtPath(state.ast, parent).type === 'Group') {
-      focusEquationPath(activeEquationIndex.value, parent)
-      return
-    }
-  }
-
-  moveHorizontal('forward')
-}
-
-function handleComma() {
-  const state = currentState()
-
-  if (!state.ast) {
-    return
-  }
-
-  const insertSibling =
-    state.caretSide === 'before' ? insertSiblingBeforeAtPath : insertSiblingAfterAtPath
-  const result = insertSibling(state.ast, resolveCommandPath(state.focusedPath))
-
-  if (result) {
-    applyCommandResult(result)
-  }
-}
-
-function handleBackspace() {
-  const state = currentState()
-
-  if (!state.ast) {
-    removeActiveEquationIfPossible()
-    return
-  }
-
-  const path = resolveCommandPath(state.focusedPath)
-  const node = getNodeAtPath(state.ast, path)
-
-  if (node.type === 'Number') {
-    const text = numberTextFor(path, node).slice(0, -1)
-
-    if (text && text !== '-' && text !== '.') {
-      applyCommandResult(replaceFocusedNode(state.ast, path, { ...node, value: Number(text) }))
-      numberEdit.value = { key: JSON.stringify(path), text }
-      return
-    }
-  }
-
-  if (node.type === 'Identifier' && node.name.length > 1) {
-    applyCommandResult(
-      replaceFocusedNode(state.ast, path, { ...node, name: node.name.slice(0, -1) }),
-    )
-    return
-  }
-
-  // Deleting a bracket group removes the brackets but keeps the content.
-  // An empty group has no content worth keeping, so drop it entirely
-  // instead of unwrapping to a placeholder that would need a second
-  // backspace to clear.
-  if (node.type === 'Group') {
-    if (node.value.type === 'Placeholder') {
-      applyCommandResult(deleteEmptyGroupAtPath(state.ast, path))
-    } else {
-      applyCommandResult(unwrapNodeAtPath(state.ast, path))
-    }
-    return
-  }
-
-  if (node.type === 'Placeholder') {
-    if (path.length === 0) {
-      pushHistory()
-      state.ast = null
-      state.focusedPath = []
-      state.selection = collapseSelection([])
-      state.caretSide = 'after'
-      numberEdit.value = null
-      return
-    }
-
-    // Focus is inside an empty group's parens; delete the group as a
-    // whole rather than collapsing it to a bare placeholder in place.
-    const enclosingGroupPath = parentNodePath(path)
-    if (enclosingGroupPath && getNodeAtPath(state.ast, enclosingGroupPath).type === 'Group') {
-      applyCommandResult(deleteEmptyGroupAtPath(state.ast, enclosingGroupPath))
-      return
-    }
-
-    applyCommandResult(deletePlaceholderAtPath(state.ast, path))
-    return
-  }
-
-  applyCommandResult(replaceNodeWithPlaceholder(state.ast, path))
-}
-
-// ---------------------------------------------------------------------------
-// Navigation
-// ---------------------------------------------------------------------------
-
-function moveFocusToPlaceholder(direction: 'forward' | 'backward') {
-  const state = currentState()
-
-  if (!state.ast) {
-    return
-  }
-
-  const current = resolveCommandPath(state.focusedPath)
-  const nextPath = getNextPlaceholderPath(state.ast, state.focusedPath, direction)
-
-  // No empty slot to jump to (or only the one already focused): step
-  // horizontally instead so Tab keeps moving through the equation.
-  if (!nextPath || pathsEqual(nextPath, current)) {
-    moveHorizontal(direction)
-    return
-  }
-
-  focusEquationPath(activeEquationIndex.value, nextPath)
-}
-
-function moveHorizontal(direction: 'forward' | 'backward') {
-  const state = currentState()
-
-  if (!state.ast) {
-    return
-  }
-
-  const path = resolveCommandPath(state.focusedPath)
-  const next = stepCaret(state.ast, { path, side: state.caretSide }, direction)
-
-  // At either boundary there's no further step to take; stay put. Climbing
-  // to the enclosing expression is a deliberate separate action (ArrowUp),
-  // not something walking the terms does on its own.
-  if (!next) {
-    return
-  }
-
-  // Not focusEquationPath: that resets caretSide to 'after', which would
-  // undo the very side-flip this step may just have produced.
-  state.focusedPath = next.path
-  state.selection = collapseSelection(next.path)
-  state.caretSide = next.side
-  numberEdit.value = null
-  focusSurface()
-}
-
-function selectParent(): boolean {
-  const state = currentState()
-
-  if (!state.ast) {
-    return false
-  }
-
-  const parent = parentNodePath(resolveCommandPath(state.focusedPath))
-
-  if (!parent) {
-    return false
-  }
-
-  focusEquationPath(activeEquationIndex.value, parent)
-  return true
-}
-
-function selectFirstChild(): boolean {
-  const state = currentState()
-
-  if (!state.ast) {
-    return false
-  }
-
-  const child = firstChildNodePath(state.ast, resolveCommandPath(state.focusedPath))
-
-  if (!child) {
-    return false
-  }
-
-  focusEquationPath(activeEquationIndex.value, child)
-  return true
-}
-
-// ---------------------------------------------------------------------------
-// Command mode ("\frac", "\sqrt", "\sin", ...)
-// ---------------------------------------------------------------------------
-
-function runCommandName(name: string) {
-  switch (name) {
-    case 'frac':
-    case 'fraction':
-      insertFraction()
-      return
-    case 'sqrt':
-      insertRoot(false)
-      return
-    case 'root':
-      insertRoot(true)
-      return
-    case 'abs':
-      insertAbs()
-      return
-    case 'dd':
-    case 'diff':
-    case 'derivative':
-      insertDerivative()
-      return
-    case 'pow':
-    case 'power':
-      insertPower()
-      return
-  }
-
-  if (getFunctionDefinition(name)) {
-    insertFunction(name)
-    return
-  }
-
-  // Fall back to a named identifier, so "\alpha" gives a greek variable.
-  const state = currentState()
-
-  if (!state.ast) {
-    startEquationWith({ type: 'Identifier', name })
-    return
-  }
-
-  applyCommandResult(
-    replaceFocusedNode(state.ast, resolveCommandPath(state.focusedPath), {
-      type: 'Identifier',
-      name,
-    }),
-  )
-}
 
 function commitCommand() {
-  const name = (commandBuffer.value ?? '').trim().toLowerCase()
+  const name = (commandBuffer.value ?? '').trim()
   commandBuffer.value = null
-
-  if (name) {
-    runCommandName(name)
-  }
+  if (name) run(namedCommand(name))
 }
 
-function handleCommandModeKeydown(event: KeyboardEvent) {
-  event.preventDefault()
-
+function handleCommandModeKey(event: KeyboardEvent) {
   if (/^[a-zA-Z0-9]$/.test(event.key)) {
     commandBuffer.value += event.key
-    return
-  }
-
-  if (event.key === 'Backspace') {
+  } else if (event.key === 'Backspace') {
     commandBuffer.value = commandBuffer.value ? commandBuffer.value.slice(0, -1) : null
-    return
-  }
-
-  if (event.key === 'Enter' || event.key === ' ' || event.key === 'Tab' || event.key === '(') {
+  } else if (['Enter', ' ', 'Tab', '('].includes(event.key)) {
     commitCommand()
-    return
-  }
-
-  if (event.key === 'Escape') {
+  } else if (event.key === 'Escape') {
     commandBuffer.value = null
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Keyboard dispatch
-// ---------------------------------------------------------------------------
-
-function handleCharacter(char: string) {
-  switch (char) {
-    case '/':
-      insertFraction()
-      return
-    case '^':
-      insertPower()
-      return
-    case '=':
-      insertEqual()
-      return
-    case '+':
-      insertAddSmart()
-      return
-    case '*':
-      insertMultiplySmart()
-      return
-    case '-':
-      insertMinusSmart()
-      return
-    case '|':
-      insertAbs()
-      return
-    case '(':
-      handleOpenParen()
-      return
-    case ')':
-      handleCloseParen()
-      return
-    case ',':
-      handleComma()
-      return
-    case '.':
-      typeDecimalPoint()
-      return
-  }
-
-  if (/^[a-zA-Z]$/.test(char)) {
-    typeLetter(char)
+  } else {
     return
   }
 
-  if (/^[0-9]$/.test(char)) {
-    typeDigit(char)
-  }
+  event.preventDefault()
+  event.stopPropagation()
 }
 
-function handleEditorKeydown(event: KeyboardEvent) {
+function handleCaptureKeydown(event: KeyboardEvent) {
   if (commandBuffer.value !== null) {
-    handleCommandModeKeydown(event)
+    handleCommandModeKey(event)
     return
   }
 
   if ((event.ctrlKey || event.metaKey) && !event.altKey) {
     const key = event.key.toLowerCase()
 
-    if (key === 'z') {
+    if (key === 'z' || key === 'y') {
       event.preventDefault()
-
-      if (event.shiftKey) {
-        redo()
-      } else {
-        undo()
-      }
-
-      return
-    }
-
-    if (key === 'y') {
-      event.preventDefault()
-      redo()
+      event.stopPropagation()
+      if (key === 'y' || event.shiftKey) redo()
+      else undo()
     }
 
     return
   }
 
-  if (event.altKey) {
-    if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
-      event.preventDefault()
-      moveActiveEquation(event.key === 'ArrowUp' ? 'up' : 'down')
-    }
-
-    return
+  if (event.key === '\\' && !event.altKey) {
+    event.preventDefault()
+    event.stopPropagation()
+    commandBuffer.value = ''
   }
+}
+
+// ---------------------------------------------------------------------------
+// Keyboard: keys MathField didn't use (bubble phase)
+// ---------------------------------------------------------------------------
+
+function handleUnusedKey(event: KeyboardEvent) {
+  if (event.defaultPrevented) return
 
   switch (event.key) {
     case 'Enter':
       event.preventDefault()
-      addEquationAfterActive()
-      return
-    case 'Tab':
-      event.preventDefault()
-      moveFocusToPlaceholder(event.shiftKey ? 'backward' : 'forward')
-      return
-    case 'ArrowRight':
-      event.preventDefault()
-      moveHorizontal('forward')
-      return
-    case 'ArrowLeft':
-      event.preventDefault()
-      moveHorizontal('backward')
+      addLineAfterActive()
       return
     case 'ArrowUp':
       event.preventDefault()
-
-      if (!selectParent()) {
-        moveActiveEquation('up')
-      }
-
+      moveToLine(activeIndex.value - 1)
       return
     case 'ArrowDown':
-      // Drill-in only — switching equation lines is Alt+ArrowDown, so a leaf
-      // selection never accidentally jumps to another line.
       event.preventDefault()
-      selectFirstChild()
-      return
-    case 'Escape':
-      event.preventDefault()
-      selectParent()
+      moveToLine(activeIndex.value + 1)
       return
     case 'Backspace':
-    case 'Delete':
-      event.preventDefault()
-      handleBackspace()
+      // Only reaches here when there is nothing left to delete on the line.
+      if (active().root.length === 0) {
+        event.preventDefault()
+        removeActiveLine()
+      }
       return
-  }
-
-  if (event.key === '\\') {
-    event.preventDefault()
-    commandBuffer.value = ''
-    return
-  }
-
-  if (event.key.length === 1) {
-    event.preventDefault()
-    handleCharacter(event.key)
   }
 }
 
@@ -934,28 +247,28 @@ function handleEditorKeydown(event: KeyboardEvent) {
 interface ToolButton {
   latex: string
   title: string
-  run: () => void
+  command: Command
 }
 
 const structureButtons: ToolButton[] = [
-  { latex: '\\frac{a}{b}', title: 'Fraction  ( / )', run: insertFraction },
-  { latex: 'x^{n}', title: 'Power  ( ^ )', run: insertPower },
-  { latex: '\\sqrt{x}', title: 'Square root  ( \\sqrt )', run: () => insertRoot(false) },
-  { latex: '\\sqrt[n]{x}', title: 'nth root  ( \\root )', run: () => insertRoot(true) },
-  { latex: '|x|', title: 'Absolute value  ( | )', run: insertAbs },
+  { latex: '\\frac{a}{b}', title: 'Fraction  ( / )', command: insertFraction },
+  { latex: 'x^{n}', title: 'Power  ( ^ )', command: insertSuperscript },
+  { latex: '\\sqrt{x}', title: 'Square root  ( \\sqrt )', command: insertSquareRoot },
+  { latex: '\\sqrt[n]{x}', title: 'nth root  ( \\root )', command: insertNthRoot },
+  { latex: '|x|', title: 'Absolute value  ( | )', command: insertAbs },
   {
     latex: '\\frac{\\mathrm{d}y}{\\mathrm{d}x}',
     title: 'Derivative  ( \\dd )',
-    run: insertDerivative,
+    command: insertDerivative,
   },
-  { latex: '\\sin', title: 'Sine  ( \\sin or sin( )', run: () => insertFunction('sin') },
+  { latex: '\\sin', title: 'Sine  ( sin or \\sin )', command: insertFunction('sin') },
 ]
 
 const operatorButtons: ToolButton[] = [
-  { latex: '+', title: 'Add  ( + )', run: insertAddSmart },
-  { latex: '-', title: 'Subtract  ( - )', run: insertSubtract },
-  { latex: '\\times', title: 'Multiply  ( * )', run: insertMultiplySmart },
-  { latex: '=', title: 'Equals  ( = )', run: insertEqual },
+  { latex: '+', title: 'Add  ( + )', command: insertSymbol('+') },
+  { latex: '-', title: 'Subtract  ( - )', command: insertSymbol('-') },
+  { latex: '\\times', title: 'Multiply  ( * )', command: insertSymbol('·') },
+  { latex: '=', title: 'Equals  ( = )', command: insertSymbol('=') },
 ]
 
 function buttonHtml(latex: string): string {
@@ -966,19 +279,17 @@ function buttonHtml(latex: string): string {
 // Output panels
 // ---------------------------------------------------------------------------
 
-const activeEquation = computed(() => currentState())
-const latex = computed(() => (activeEquation.value.ast ? astToLatex(activeEquation.value.ast) : ''))
-const mathjson = computed(() =>
-  activeEquation.value.ast ? renderMathJson(activeEquation.value.ast) : '',
-)
-const mathml = computed(() =>
-  activeEquation.value.ast ? astToContentMathML(activeEquation.value.ast).trim() : '',
-)
-const focusedPathLabel = computed(() =>
-  activeEquation.value.focusedPath && activeEquation.value.focusedPath.length > 0
-    ? activeEquation.value.focusedPath.join(' › ')
-    : 'root',
-)
+const parsed = computed(() => {
+  const root = active().root
+  return root.length > 0 ? parseRow(root) : null
+})
+
+const ast = computed(() => parsed.value?.ast ?? null)
+const diagnostics = computed(() => parsed.value?.diagnostics ?? [])
+const latex = computed(() => (ast.value ? astToLatex(ast.value) : ''))
+const mathjson = computed(() => (ast.value ? renderMathJson(ast.value) : ''))
+const mathml = computed(() => (ast.value ? astToContentMathML(ast.value).trim() : ''))
+const cursorLabel = computed(() => describeCursor(active().cursor))
 
 const isCopyingMathJson = ref(false)
 
@@ -1001,9 +312,7 @@ function fallbackCopyText(text: string): boolean {
 }
 
 async function copyMathJson() {
-  if (!mathjson.value) {
-    return
-  }
+  if (!mathjson.value) return
 
   isCopyingMathJson.value = true
 
@@ -1023,12 +332,7 @@ async function copyMathJson() {
 </script>
 
 <template>
-  <section
-    ref="editorSurface"
-    class="editor-grid"
-    tabindex="0"
-    @keydown.capture="handleEditorKeydown"
-  >
+  <section class="editor-grid" @keydown.capture="handleCaptureKeydown">
     <Card class="editor-card">
       <template #title>
         <div class="header-row">
@@ -1038,7 +342,7 @@ async function copyMathJson() {
       </template>
 
       <template #subtitle>
-        Click any part of an equation to select it, then type — the structure stays semantic.
+        Type as you would write it; the structure is worked out as you go.
       </template>
 
       <template #content>
@@ -1050,7 +354,8 @@ async function copyMathJson() {
               type="button"
               class="tool-button"
               :title="item.title"
-              @click="item.run"
+              @mousedown.prevent
+              @click="run(item.command)"
             >
               <span v-html="buttonHtml(item.latex)"></span>
             </button>
@@ -1063,7 +368,8 @@ async function copyMathJson() {
               type="button"
               class="tool-button tool-button-op"
               :title="item.title"
-              @click="item.run"
+              @mousedown.prevent
+              @click="run(item.command)"
             >
               <span v-html="buttonHtml(item.latex)"></span>
             </button>
@@ -1076,6 +382,7 @@ async function copyMathJson() {
               text
               title="Undo (Ctrl+Z)"
               :disabled="!canUndo"
+              @mousedown.prevent
               @click="undo"
             />
             <Button
@@ -1084,17 +391,17 @@ async function copyMathJson() {
               text
               title="Redo (Ctrl+Shift+Z)"
               :disabled="!canRedo"
+              @mousedown.prevent
               @click="redo"
             />
-            <Button label="Unwrap" size="small" text title="Replace selection with its first child"
-              @click="unwrapFocusedNode" />
             <Button
               icon="pi pi-plus"
               label="Line"
               size="small"
               text
               title="Add equation line (Enter)"
-              @click="addEquationAfterActive"
+              @mousedown.prevent
+              @click="addLineAfterActive"
             />
             <Button
               icon="pi pi-trash"
@@ -1102,52 +409,61 @@ async function copyMathJson() {
               text
               severity="danger"
               title="Remove equation line"
-              :disabled="editorStates.length <= 1"
-              @click="removeActiveEquationIfPossible"
+              :disabled="equations.length <= 1"
+              @mousedown.prevent
+              @click="removeActiveLine"
             />
           </div>
         </div>
 
         <Divider />
 
-        <div class="equations-stack">
+        <div class="equations-stack" @keydown="handleUnusedKey">
           <div
-            v-for="(equationState, index) in editorStates"
+            v-for="(equation, index) in equations"
             :key="index"
             class="equation-row"
-            :class="{ active: index === activeEquationIndex }"
-            @click="setActiveEquation(index)"
+            :class="{ active: index === activeIndex }"
+            :data-line="index"
+            @focusin="activeIndex = index"
           >
             <div class="equation-label">{{ index + 1 }}</div>
 
-            <EquationEditor
+            <MathField
+              :ref="(el) => (fieldRefs[index] = el as InstanceType<typeof MathField> | null)"
               class="equation-field"
-              :model-value="equationState.ast"
-              :focused-path="equationState.focusedPath"
-              :caret-side="equationState.caretSide"
-              :is-active="index === activeEquationIndex"
-              @focus-path="focusEquationPath(index, $event)"
+              :model-value="equation.root"
+              :cursor="equation.cursor"
+              :active="index === activeIndex"
+              @update:cursor="handleCursor(index, $event)"
+              @edit="handleEdit(index, $event)"
             />
           </div>
         </div>
 
-        <div v-if="commandBuffer !== null" class="command-chip">
+        <div v-if="commandBuffer !== null" class="command-chip" data-role="command">
           <span class="command-slash">\</span>{{ commandBuffer }}<span class="command-caret"></span>
         </div>
-        <p v-else class="focus-meta">Selection: {{ focusedPathLabel }}</p>
+        <p v-else class="focus-meta">
+          Cursor: <span data-role="cursor">{{ cursorLabel }}</span>
+        </p>
+
+        <ul v-if="diagnostics.length" class="diagnostics" data-role="diagnostics">
+          <li v-for="(problem, index) in diagnostics" :key="index">{{ problem.message }}</li>
+        </ul>
 
         <p class="key-hint">
-          <kbd>←</kbd><kbd>→</kbd> walk the terms · <kbd>↑</kbd> select enclosing expression ·
-          <kbd>↓</kbd> drill in · <kbd>Tab</kbd> next empty slot, else step right ·
-          <kbd>Enter</kbd> new line ·
-          <kbd>Alt</kbd>+<kbd>↑↓</kbd> switch lines
+          <kbd>←</kbd><kbd>→</kbd> move through every position · <kbd>↑</kbd
+          ><kbd>↓</kbd> numerator/denominator, else previous/next line · <kbd>Home</kbd
+          ><kbd>End</kbd> start/end · <kbd>Tab</kbd> next empty slot · <kbd>Space</kbd> step out of
+          a fraction, exponent or bracket · <kbd>Enter</kbd> new line
         </p>
         <p class="key-hint">
-          Type letters/numbers to fill the selection · <code>+ − * / ^ = |</code> build structure
-          with normal precedence · <code>(</code> opens brackets, <code>)</code> steps out and
-          selects them · <code>\</code> opens commands (<code>\frac \sqrt \root \abs \dd \sin
-          \alpha</code> …) · <code>sin(</code> makes a function · <kbd>Backspace</kbd> deletes step
-          by step · <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo
+          Type letters, numbers and <code>+ − * = ,</code> where the caret is · <code>/</code> makes
+          a fraction of what's before the caret · <code>^</code> exponent · <code>( )</code> and
+          <code>| |</code> brackets · <code>sin</code>, <code>cos</code>, … become functions ·
+          <code>\</code> commands (<code>\frac \sqrt \root \abs \dd \sin \alpha</code> …) ·
+          <kbd>Backspace</kbd>/<kbd>Delete</kbd> delete · <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo
         </p>
       </template>
     </Card>
@@ -1157,7 +473,7 @@ async function copyMathJson() {
         <div id="ast-preview-title">AST Preview</div>
       </template>
       <template #content>
-        <pre>{{ JSON.stringify(activeEquation.ast, null, 2) }}</pre>
+        <pre data-role="ast">{{ ast ? JSON.stringify(ast, null, 2) : '' }}</pre>
       </template>
     </Card>
 
@@ -1166,7 +482,7 @@ async function copyMathJson() {
         <div id="mathml-preview-title">Content MathML</div>
       </template>
       <template #content>
-        <pre>{{ mathml }}</pre>
+        <pre data-role="mathml">{{ mathml }}</pre>
       </template>
     </Card>
 
@@ -1185,7 +501,7 @@ async function copyMathJson() {
         </div>
       </template>
       <template #content>
-        <pre>{{ mathjson }}</pre>
+        <pre data-role="mathjson">{{ mathjson }}</pre>
       </template>
     </Card>
 
@@ -1194,7 +510,7 @@ async function copyMathJson() {
         <div id="latex-preview-title">LaTeX</div>
       </template>
       <template #content>
-        <pre>{{ latex }}</pre>
+        <pre data-role="latex">{{ latex }}</pre>
       </template>
     </Card>
   </section>
@@ -1315,6 +631,11 @@ async function copyMathJson() {
   min-width: 0;
 }
 
+/* The active line's border already shows focus. */
+.equation-field.focused {
+  box-shadow: none;
+}
+
 .command-chip {
   display: inline-flex;
   align-items: center;
@@ -1348,6 +669,15 @@ async function copyMathJson() {
 .focus-meta {
   margin: 0.75rem 0 0;
   color: #64748b;
+  font-size: 0.8rem;
+}
+
+.diagnostics {
+  margin: 0.5rem 0 0;
+  padding: 0.4rem 0.6rem 0.4rem 1.6rem;
+  border-radius: 0.45rem;
+  background: #fef3c7;
+  color: #92400e;
   font-size: 0.8rem;
 }
 
