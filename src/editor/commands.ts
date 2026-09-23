@@ -206,38 +206,66 @@ for (const definition of Object.values(FUNCTION_REGISTRY)) {
 }
 const LONGEST_SPELLING = Math.max(...Array.from(FUNCTION_SPELLINGS.keys(), (s) => s.length))
 
-// After a letter is typed: turn the letters just before the cursor into a
-// function atom when they spell a known function ("s", "i", "n" -> sin), and
-// extend a function just before the cursor ("cos" + "h" -> cosh).
-function recogniseFunctionName(state: EditorState): EditorState {
-  const { path, offset } = state.cursor
-  const current = requireRow(state.root, path)
-  const letter = current[offset - 1]
-  const previous = current[offset - 2]
+// The function a spelling names ("sin", "arcsin" -> "asin"), if any.
+export function functionForSpelling(spelling: string): string | undefined {
+  return FUNCTION_SPELLINGS.get(spelling)
+}
+
+// The replacement for a function spelling that ends at `offset` in a row,
+// if there is one: `start` and `length` say which atoms to replace. Two cases:
+// letters that spell a known function ("s", "i", "n" -> sin; the longest
+// spelling wins), and a letter that extends the function just before it
+// ("cos" + "h" -> cosh). Also used when pasting plain text.
+export function functionSpellingAt(
+  row: Row,
+  offset: number,
+): { start: number; length: number; name: string } | null {
+  const letter = row[offset - 1]
+  const previous = row[offset - 2]
 
   if (isLetter(letter) && previous?.kind === 'function') {
     const extended = FUNCTION_SPELLINGS.get(displayName(previous.name) + letter.value)
-    if (extended) {
-      return splice(state, path, offset - 2, 2, [func(extended)], { path, offset: offset - 1 })
-    }
+    if (extended) return { start: offset - 2, length: 2, name: extended }
   }
 
   let letters = ''
   for (let i = offset - 1; i >= 0 && letters.length < LONGEST_SPELLING; i--) {
-    const atom = current[i]
+    const atom = row[i]
     if (!isLetter(atom)) break
     letters = atom.value + letters
   }
 
   for (let length = letters.length; length >= 2; length--) {
     const name = FUNCTION_SPELLINGS.get(letters.slice(-length))
-    if (name) {
-      const start = offset - length
-      return splice(state, path, start, length, [func(name)], { path, offset: start + 1 })
-    }
+    if (name) return { start: offset - length, length, name }
   }
 
-  return state
+  return null
+}
+
+// After a letter is typed: turn a function spelling just before the cursor
+// into a function atom.
+function recogniseFunctionName(state: EditorState): EditorState {
+  const { path, offset } = state.cursor
+  const found = functionSpellingAt(requireRow(state.root, path), offset)
+  if (!found) return state
+
+  return splice(state, path, found.start, found.length, [func(found.name)], {
+    path,
+    offset: found.start + 1,
+  })
+}
+
+// Insert atoms at the cursor, replacing the selection if there is one; the
+// cursor goes after them (pasting).
+export function insertAtoms(atoms: Row): Command {
+  return (current) => {
+    const state = clearSelection(current)
+    if (atoms.length === 0) return state
+
+    const { path, offset } = state.cursor
+    return splice(state, path, offset, 0, atoms, { path, offset: offset + atoms.length })
+  }
 }
 
 // Insert one glyph (digit, letter, operator, …) at the cursor.

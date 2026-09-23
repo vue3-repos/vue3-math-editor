@@ -473,7 +473,8 @@ async function copyMathJson() {
           ><kbd>End</kbd>, <kbd>Ctrl</kbd>+<kbd>A</kbd> or by dragging · <code>/</code>,
           <code>^</code>, <code>(</code>, <code>|</code>, <code>\sqrt</code>, <code>\sin</code>, …
           or a toolbar button then wraps the selection · typing replaces it · <kbd>Esc</kbd> clears
-          it
+          it · <kbd>Ctrl</kbd>+<kbd>C</kbd>/<kbd>X</kbd>/<kbd>V</kbd> copy, cut and paste (copies as
+          LaTeX for other apps; pastes LaTeX or plain text such as <code>(x+1)/2</code>)
         </p>
         <p class="key-hint">
           Type letters, numbers and <code>+ − * = ,</code> where the caret is · <code>/</code> makes

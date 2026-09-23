@@ -1,6 +1,6 @@
 # Cursor refactor: design record
 
-_Recorded 2026-09-23. Status: accepted; implementation in progress on `refactor/cursor-model` (steps 1–4 and selection done)._
+_Recorded 2026-09-23. Status: accepted; implementation in progress on `refactor/cursor-model` (steps 1–4, selection and clipboard done)._
 
 ## Background
 
@@ -161,6 +161,32 @@ The selection is drawn as a translucent box behind the equation (`selectionBox` 
 caret is hidden while something is selected. Selection changes are not undo steps, but
 each undo step restores the selection that existed before the edit.
 
+### Copy, cut and paste
+
+`editor/clipboard.ts`, wired up in `MathField` through the browser's `copy`, `cut` and
+`paste` events, so the system shortcuts and Edit menu work. Chrome sends these events
+to a focused, non-editable `div`, so no hidden text area is needed.
+
+- **Copy** writes two formats. `application/x-semantic-math+json` holds the selected
+  layout atoms, for an exact paste inside the editor. `text/plain` holds readable LaTeX
+  (`\frac{1}{x}+y`) for other apps. With nothing selected, copy does nothing and the
+  clipboard is left alone.
+- **Cut** = copy, then delete the selection (one undo step).
+- **Paste** prefers the editor's own format; pasted atoms get fresh ids. Otherwise it reads
+  `text/plain` as LaTeX, which also covers plain typed maths:
+  - LaTeX: `\frac`, `\dfrac`, `^{…}`, `\sqrt`, `\sqrt[n]`, `\left( … \right)`,
+    `\left| … \right|`, `\frac{\mathrm{d}…}{\mathrm{d}…}` (a derivative), function
+    commands and `\operatorname`, Greek letters, `\cdot`, `\times`, `\mathit{word}`,
+    `\text{…}`. Spacing commands are ignored. `\square` is an empty slot.
+  - Plain text: `a/b` makes a fraction of the operands either side (as typing `/` does),
+    with brackets dropped from a bracketed operand. `^` takes a braced group, one
+    character, or a whole run of digits (`x^10`). Letters spelling a function become
+    that function, and `*` becomes `·`.
+  - Subscripts aren't supported: the content of `_…` is kept inline.
+  - Pasting replaces the selection and leaves the cursor after the pasted atoms (one undo
+    step).
+- `rowToLatexSource` and `latexToRow` round-trip every atom kind (unit-tested).
+
 ### Testing
 
 - **Unit tests** (Vitest, `npm test`): `tests/*.spec.ts`. Pure model code (cursor
@@ -202,8 +228,8 @@ multi-line list, command mode, toolbar and output panels.
 
 ### Possible next steps
 
-- Copy, cut and paste of a selection (as layout atoms within the editor, and as LaTeX
-  or MathJSON to other apps).
+- Copy as MathJSON or MathML too (e.g. `text/html` or an explicit "copy as" menu).
+- Pasting several lines as several equations.
 - Subscripts (`_`), if needed for variable names like x₁.
 - Marking parser diagnostics on the offending atom (each diagnostic carries its
   `atomId`).

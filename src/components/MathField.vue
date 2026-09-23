@@ -9,11 +9,22 @@
 // Ctrl/Cmd/Alt shortcuts other than select-all, ↑/↓ with no row above/below,
 // and Backspace/Delete/Tab when they have nothing to do here (e.g. Backspace
 // in an empty equation).
+//
+// Copy, cut and paste use the browser's clipboard events (so the system
+// shortcuts and menus work): copying writes the selection as the editor's own
+// format plus LaTeX text; pasting reads either (editor/clipboard.ts).
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import katex from 'katex'
 
 import { caretBox, hitTest, nearestOffset, selectionBox } from '../editor/caretGeometry'
-import type { EditorState } from '../editor/commands'
+import {
+  CLIPBOARD_MIME,
+  deserializeAtoms,
+  latexToRow,
+  rowToLatexSource,
+  serializeAtoms,
+} from '../editor/clipboard'
+import { type EditorState, deleteBackward, insertAtoms } from '../editor/commands'
 import { type Cursor, type PickOffset, cursorAtEnd, cursorAtStart } from '../editor/cursor'
 import { commandForKey } from '../editor/keymap'
 import type { Row } from '../editor/layout'
@@ -25,6 +36,7 @@ import {
   navigateVertical,
   selectAll,
   selectBetween,
+  selectedAtoms,
   selectionOf,
 } from '../editor/selection'
 import { KATEX_EDITOR_OPTIONS, rowToLatex } from '../renderers/layoutLatex'
@@ -117,12 +129,18 @@ watch(
 
 onMounted(() => {
   window.addEventListener('resize', updateOverlays)
+  document.addEventListener('copy', handleCopy)
+  document.addEventListener('cut', handleCut)
+  document.addEventListener('paste', handlePaste)
   // Glyph metrics shift once the math fonts load.
   document.fonts?.ready.then(updateOverlays)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateOverlays)
+  document.removeEventListener('copy', handleCopy)
+  document.removeEventListener('cut', handleCut)
+  document.removeEventListener('paste', handlePaste)
   stopDrag()
 })
 
@@ -259,6 +277,45 @@ function stopDrag() {
   dragAnchor = null
   window.removeEventListener('mousemove', handleDragMove)
   window.removeEventListener('mouseup', stopDrag)
+}
+
+// ---------------------------------------------------------------------------
+// Clipboard
+// ---------------------------------------------------------------------------
+
+// Clipboard events go to the focused element, or the document when that
+// isn't editable; either way, only the focused field responds.
+const hasFocus = () => !!surfaceEl.value && document.activeElement === surfaceEl.value
+
+// Put the selection on the clipboard. Returns whether there was one.
+function copySelection(event: ClipboardEvent): boolean {
+  const atoms = selectedAtoms(state())
+  if (atoms.length === 0 || !event.clipboardData) return false
+
+  event.preventDefault()
+  event.clipboardData.setData('text/plain', rowToLatexSource(atoms))
+  event.clipboardData.setData(CLIPBOARD_MIME, serializeAtoms(atoms))
+  return true
+}
+
+function handleCopy(event: ClipboardEvent) {
+  if (hasFocus()) copySelection(event)
+}
+
+function handleCut(event: ClipboardEvent) {
+  if (!hasFocus() || props.readonly) return
+  if (copySelection(event)) emit('edit', deleteBackward(state()))
+}
+
+function handlePaste(event: ClipboardEvent) {
+  if (!hasFocus() || props.readonly || !event.clipboardData) return
+  event.preventDefault()
+
+  const data = event.clipboardData
+  const atoms =
+    deserializeAtoms(data.getData(CLIPBOARD_MIME)) ?? latexToRow(data.getData('text/plain'))
+
+  if (atoms.length > 0) emit('edit', insertAtoms(atoms)(state()))
 }
 
 defineExpose({ focus: () => surfaceEl.value?.focus() })
