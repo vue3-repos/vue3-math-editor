@@ -10,13 +10,23 @@
 // and Backspace/Delete/Tab when they have nothing to do here (e.g. Backspace
 // in an empty equation).
 //
+// Marks underline atoms with a problem (a parser diagnostic, or later a
+// units issue) and show the message when the pointer is over them.
+//
 // Copy, cut and paste use the browser's clipboard events (so the system
 // shortcuts and menus work): copying writes the selection as the editor's own
 // format plus LaTeX text; pasting reads either (editor/clipboard.ts).
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import katex from 'katex'
 
-import { caretBox, hitTest, nearestOffset, selectionBox } from '../editor/caretGeometry'
+import {
+  type SelectionBox,
+  atomsBox,
+  caretBox,
+  hitTest,
+  nearestOffset,
+  selectionBox,
+} from '../editor/caretGeometry'
 import {
   CLIPBOARD_MIME,
   deserializeAtoms,
@@ -46,6 +56,13 @@ export interface NavigationState {
   anchor: Cursor | null
 }
 
+// A problem to underline. A ParseDiagnostic is a Mark.
+export interface Mark {
+  message: string
+  // Consecutive atoms of one row.
+  atomIds: readonly string[]
+}
+
 const props = withDefaults(
   defineProps<{
     modelValue: Row
@@ -53,8 +70,9 @@ const props = withDefaults(
     anchor?: Cursor | null
     active?: boolean
     readonly?: boolean
+    marks?: readonly Mark[]
   }>(),
-  { anchor: null, active: true, readonly: false },
+  { anchor: null, active: true, readonly: false, marks: () => [] },
 )
 
 const emit = defineEmits<{
@@ -67,6 +85,10 @@ const focused = ref(false)
 const caretStyle = ref<Record<string, string> | null>(null)
 const caretInPlaceholder = ref(false)
 const selectionStyle = ref<Record<string, string> | null>(null)
+const markBoxes = ref<Array<{ box: SelectionBox; message: string }>>([])
+// The mark under the pointer, positioned in client coordinates (the tooltip
+// is position: fixed so the field's horizontal scrolling doesn't clip it).
+const hoveredMark = ref<{ message: string; left: number; top: number } | null>(null)
 // Bumped on every move so the blink animation restarts and the caret is
 // visible straight after moving.
 const caretKey = ref(0)
@@ -115,10 +137,52 @@ function updateOverlays() {
         height: `${area.height}px`,
       }
     : null
+
+  markBoxes.value = container
+    ? props.marks.flatMap((mark) => {
+        const box = atomsBox(container, mark.atomIds, 1)
+        return box ? [{ box, message: mark.message }] : []
+      })
+    : []
+  hoveredMark.value = null
+}
+
+function markStyle(box: SelectionBox): Record<string, string> {
+  return {
+    left: `${box.left}px`,
+    top: `${box.top}px`,
+    width: `${box.width}px`,
+    // Room below the glyphs for the wavy underline.
+    height: `${box.height + 4}px`,
+  }
+}
+
+function handleHover(event: MouseEvent) {
+  const container = surfaceEl.value
+  if (!container || dragAnchor || markBoxes.value.length === 0) {
+    hoveredMark.value = null
+    return
+  }
+
+  const base = container.getBoundingClientRect()
+  const x = event.clientX - base.left + container.scrollLeft
+  const y = event.clientY - base.top + container.scrollTop
+  const hit = markBoxes.value.find(
+    ({ box }) =>
+      x >= box.left && x <= box.left + box.width && y >= box.top && y <= box.top + box.height + 4,
+  )
+
+  hoveredMark.value = hit
+    ? {
+        message: hit.message,
+        left: base.left + hit.box.left - container.scrollLeft,
+        top: base.top + hit.box.top + hit.box.height + 6 - container.scrollTop,
+      }
+    : null
 }
 
 watch(
-  [html, () => props.cursor, () => props.anchor, () => props.active],
+  [html, () => props.cursor, () => props.anchor, () => props.active, () => props.marks],
   async () => {
     await nextTick()
     updateOverlays()
@@ -252,6 +316,7 @@ function cursorAt(event: MouseEvent): Cursor | null {
 function handleMousedown(event: MouseEvent) {
   // Stop the browser selecting KaTeX text; place the cursor ourselves.
   event.preventDefault()
+  hoveredMark.value = null
   if (event.button !== 0) return
 
   const hit = cursorAt(event)
@@ -329,14 +394,33 @@ defineExpose({ focus: () => surfaceEl.value?.focus() })
     tabindex="0"
     role="textbox"
     aria-label="Equation"
+    :aria-invalid="marks.length > 0 || undefined"
     @keydown="handleKeydown"
     @mousedown="handleMousedown"
+    @mousemove="handleHover"
+    @mouseleave="hoveredMark = null"
     @focus="focused = true"
     @blur="focused = false"
   >
     <div v-if="showSelection" class="selection" :style="selectionStyle!"></div>
+    <div
+      v-for="(mark, index) in markBoxes"
+      :key="index"
+      class="mark"
+      data-role="mark"
+      :style="markStyle(mark.box)"
+    ></div>
     <div v-if="showCaret" :key="caretKey" class="caret" :style="caretStyle!"></div>
     <div class="math-content" v-html="html"></div>
+    <div
+      v-if="hoveredMark"
+      class="mark-tip"
+      role="tooltip"
+      data-role="mark-tip"
+      :style="{ left: `${hoveredMark.left}px`, top: `${hoveredMark.top}px` }"
+    >
+      {{ hoveredMark.message }}
+    </div>
   </div>
 </template>
 
@@ -374,6 +458,31 @@ defineExpose({ focus: () => surfaceEl.value?.focus() })
 
 .math-field.focused .selection {
   background: rgba(37, 99, 235, 0.2);
+}
+
+.mark {
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: 2px;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='3'%3E%3Cpath d='M0 2.5 L1.5 0.5 L3 2.5 L4.5 0.5 L6 2.5' fill='none' stroke='%23dc2626' stroke-width='1'/%3E%3C/svg%3E")
+      repeat-x left bottom / 6px 3px,
+    rgba(220, 38, 38, 0.08);
+}
+
+.mark-tip {
+  position: fixed;
+  z-index: 10;
+  max-width: 20rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.35rem;
+  background: #1e293b;
+  color: #f8fafc;
+  font-size: 0.75rem;
+  line-height: 1.3;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 .caret {

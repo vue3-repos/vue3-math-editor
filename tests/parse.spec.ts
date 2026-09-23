@@ -12,6 +12,7 @@ import {
   superscript,
   symbol,
 } from '../src/editor/layout'
+import { nameOccurrences } from '../src/editor/identifiers'
 import { parseRow } from '../src/editor/parse'
 import { astToMathJson } from '../src/renderers/mathjson'
 import type { AstNode } from '../src/types/ast'
@@ -222,7 +223,7 @@ describe('diagnostics', () => {
     const atoms = row('x?+1')
     const result = parseRow(atoms)
     expect(result.ast).toEqual(add(id('x'), n(1)))
-    expect(result.diagnostics).toEqual([{ message: 'Unexpected "?"', atomId: atoms[1].id }])
+    expect(result.diagnostics).toEqual([{ message: 'Unexpected "?"', atomIds: [atoms[1].id] }])
   })
 
   it('reports a comma outside function brackets', () => {
@@ -230,10 +231,19 @@ describe('diagnostics', () => {
     expect(result.diagnostics.map((d) => d.message)).toEqual(['Unexpected ","'])
   })
 
-  it('reports malformed numbers', () => {
-    const result = parseRow(row('1.2.3'))
-    expect(result.ast).toEqual(n(1.2))
-    expect(result.diagnostics.map((d) => d.message)).toEqual(['Malformed number "1.2.3"'])
+  it('reports malformed numbers, covering every atom of the number', () => {
+    const atoms = row('1.2.3+x')
+    const result = parseRow(atoms)
+    expect(result.ast).toEqual(add(n(1.2), id('x')))
+    expect(result.diagnostics).toEqual([
+      { message: 'Malformed number "1.2.3"', atomIds: atoms.slice(0, 5).map((a) => a.id) },
+    ])
+  })
+
+  it('reports problems inside structures against their own atoms', () => {
+    const inner = row('1,2')
+    const result = parseRow(row('x=', fraction(inner, row('y'))))
+    expect(result.diagnostics).toEqual([{ message: 'Unexpected ","', atomIds: [inner[1].id] }])
   })
 
   it('clean input has no diagnostics', () => {
@@ -309,5 +319,33 @@ describe('totality', () => {
       const { ast } = parseRow(tree)
       expect(() => astToMathJson(ast)).not.toThrow()
     }
+  })
+})
+
+describe('nameOccurrences', () => {
+  it('finds every occurrence of a variable name, at any depth', () => {
+    const top = row('Vm+2Vm_init=')
+    const num = row('Vm')
+    const tree = [...top, fraction(num, row('t')), superscript(row('Vm'))]
+    const ids = (atoms: typeof top) => atoms.map((a) => a.id)
+
+    const found = nameOccurrences(tree, 'Vm')
+    expect(found).toHaveLength(3)
+    expect(found[0]).toEqual(ids(top.slice(0, 2)))
+    expect(found[1]).toEqual(ids(num))
+  })
+
+  it('does not match part of a longer name or a function', () => {
+    expect(nameOccurrences(row('Vm_init'), 'Vm')).toEqual([])
+    expect(nameOccurrences(row('sin', group(row('x'))), 'sin')).toEqual([])
+  })
+
+  it('matches a Greek letter and the same name typed out, as both export as that name', () => {
+    const alpha = symbol('alpha')
+    const typed = row('alpha')
+    expect(nameOccurrences([alpha, symbol('+'), ...typed], 'alpha')).toEqual([
+      [alpha.id],
+      typed.map((a) => a.id),
+    ])
   })
 })

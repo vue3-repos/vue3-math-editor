@@ -51,6 +51,23 @@ export class Workbench {
     return this.line(line).locator('.selection')
   }
 
+  // The problem underlines drawn in a line.
+  marks(line = 0): Locator {
+    return this.line(line).locator('[data-role="mark"]')
+  }
+
+  // The message shown for the mark under the pointer.
+  markTip(): Locator {
+    return this.page.locator('[data-role="mark-tip"]')
+  }
+
+  async boxOf(locator: Locator): Promise<Box> {
+    await this.settle()
+    const rect = await locator.boundingBox()
+    if (!rect) throw new Error('Not visible')
+    return { left: rect.x, top: rect.y, right: rect.x + rect.width, bottom: rect.y + rect.height }
+  }
+
   // Drag with the mouse from one point to another.
   async drag(from: { x: number; y: number }, to: { x: number; y: number }): Promise<void> {
     await this.page.mouse.move(from.x, from.y)

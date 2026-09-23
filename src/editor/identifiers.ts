@@ -15,7 +15,7 @@
 // character at a time; the grouping is worked out here, when parsing and
 // rendering.
 
-import type { Atom, Row } from './layout'
+import { type Atom, type Row, childRows } from './layout'
 import { FUNCTION_REGISTRY } from '../registry/nodes'
 
 // Names written as a command (\alpha) that insert a Greek letter.
@@ -75,4 +75,36 @@ export function nameRuns(row: Row): NameRun[] {
   }
 
   return runs
+}
+
+// Every place a variable name appears in an equation, at any depth: the atoms
+// of each occurrence. For marking a problem reported by name rather than by
+// position, such as a units mismatch from libCellML.
+export function nameOccurrences(root: Row, name: string): string[][] {
+  const found: string[][] = []
+
+  const visit = (row: Row) => {
+    const runs = new Map(nameRuns(row).map((run) => [run.start, run]))
+
+    for (let i = 0; i < row.length; i++) {
+      const atom = row[i]
+      const run = runs.get(i)
+
+      if (run) {
+        if (run.name === name && !run.functionName) {
+          found.push(row.slice(run.start, run.end).map((a) => a.id))
+        }
+        i = run.end - 1
+        continue
+      }
+
+      // A whole-word symbol, such as a Greek letter ("alpha").
+      if (atom.kind === 'symbol' && atom.value === name) found.push([atom.id])
+
+      for (const [, child] of childRows(atom)) visit(child)
+    }
+  }
+
+  visit(root)
+  return found
 }

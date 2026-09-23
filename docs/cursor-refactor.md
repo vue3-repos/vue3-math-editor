@@ -259,6 +259,27 @@ Copy as uses the async clipboard API (`text/plain` only), falling back to
   them with `npm run test:e2e:visual -- --update-snapshots`.
 - One-off setup after `npm install`: `npx playwright install chromium`.
 
+### Marking problems
+
+Problems are underlined in the field: a red wavy line under the atoms, with the
+message in a tooltip when the pointer is over it.
+
+- **Diagnostics carry their atoms.** A `ParseDiagnostic` is `{ message, atomIds }`:
+  every atom the problem covers (all five of `1.2.3`), which are consecutive atoms of
+  one row. Tokens record the atoms they were read from, so this needed no source
+  mapping of the AST.
+- **MathField takes `marks`.** Any `{ message, atomIds }` can be marked; a
+  `ParseDiagnostic` is one. The underline box is the painted extent of the atoms
+  (`atomsBox` in caretGeometry.ts, shared with the selection box). The tooltip is
+  `position: fixed`, so the field's horizontal scrolling doesn't clip it. The field
+  sets `aria-invalid` while it has marks.
+- **Every line is marked.** The workbench parses each line (cached by row, so moving
+  the cursor doesn't re-parse); the warning box still lists only the active line's
+  problems.
+- **No AST source mapping.** Mapping every AST node back to its atoms was considered
+  as a foundation for units checking, but isn't needed: parser problems come from
+  tokens, and libCellML reports by name (below).
+
 ### Units checking with libCellML (shelved)
 
 Dimensional analysis will be done by libCellML, not the editor: it takes the Content
@@ -266,13 +287,13 @@ MathML and reports which variables, by name, have incompatible units, and in whi
 equation. Nothing is built yet; these notes record how the editor should fit around it.
 
 - **Mapping a report back to the equation needs no parser changes.** libCellML reports
-  names, not positions, and `nameRuns` (identifiers.ts) already finds every occurrence
-  of a name in a line's layout tree. The host maps the reported equation to a
-  workbench line, and the line underlines the name's atoms.
-- **One marking mechanism for both kinds of problem.** Parser diagnostics and units
-  issues should share the underline overlay (drawn like the selection box) and a
-  common shape, roughly `{ message, atomIds, source: 'parser' | 'units' }`. Units
-  issues arrive by name, so MathField resolves `{ name, message }` to atom ids itself.
+  names, not positions. `nameOccurrences(root, name)` (identifiers.ts) returns the
+  atoms of every occurrence of a variable name in a line, at any depth; a Greek letter
+  and the same name typed out both match, as both export as that name. The host maps
+  the reported equation to a workbench line and passes the occurrences to that line's
+  MathField as `marks`, alongside the parser's.
+- **Telling the two apart.** If units issues should look different from parser
+  errors (say, amber rather than red), a `Mark` gains a `kind`; nothing else changes.
 - **Names are already valid CellML identifiers.** Names are
   `[A-Za-z][A-Za-z0-9_]*`, which matches CellML's identifier rule, and Greek letters
   are exported by name (`<ci>alpha</ci>`). An empty slot exports as `<ci>_</ci>`,
@@ -309,7 +330,6 @@ multi-line list, command mode, toolbar and output panels.
 - A keyboard shortcut for "copy as" (e.g. Ctrl+Shift+C for the last format used).
 - Make the LaTeX output panel show the same LaTeX as copying does.
 - Pasting several lines as several equations.
-- Marking parser diagnostics on the offending atom (each diagnostic carries its
-  `atomId`), built so units issues from libCellML can use the same marking (see
-  above).
+- Showing a mark's message when the caret is on it, for keyboard users (the warning
+  box lists them meanwhile).
 - Coalescing consecutive typing into one undo step.

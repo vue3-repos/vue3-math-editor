@@ -200,9 +200,11 @@ You can leave slots empty and fill them later; **Tab** jumps to the next empty s
 **Shift+Tab** to the previous one. An operator with nothing after it (`x+`) gets an empty
 slot in the output rather than an error.
 
-Anything the editor can't place, such as a stray `_` or a comma outside a function's
-brackets, is listed in a warning box under the equation. It is otherwise ignored, and
-the rest of the equation is still understood.
+Anything the editor can't place, such as a stray `_`, a comma outside a function's
+brackets or a malformed number like `1.2.3`, gets a red wavy underline; point at it to
+see what's wrong. The problems in the equation you're editing are also listed in a
+warning box under it. The marked part is otherwise ignored, and the rest of the
+equation is still understood.
 
 ## Moving and editing
 

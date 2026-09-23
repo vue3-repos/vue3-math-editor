@@ -268,10 +268,25 @@ export function selectionBox(
   const row = getRow(root, selection.path)
   if (!row) return null
 
+  return atomsBox(
+    container,
+    row.slice(selection.start, selection.end).map((atom) => atom.id),
+  )
+}
+
+// The painted extent of some atoms, as one box relative to the container,
+// padded by `pad` pixels. Meant for consecutive atoms of one row (a selection,
+// or the atoms a diagnostic covers). Atoms that aren't rendered are ignored.
+export function atomsBox(
+  container: HTMLElement,
+  atomIds: readonly string[],
+  pad = 2,
+): SelectionBox | null {
   let bounds: Bounds | null = null
 
-  for (const atom of row.slice(selection.start, selection.end)) {
-    const box = atomBounds(container, atom)
+  for (const id of atomIds) {
+    const el = container.querySelector(`[data-atom="${id}"]`)
+    const box = el ? paintedBounds(el) : null
     if (!box) continue
     bounds = bounds
       ? {
@@ -286,7 +301,6 @@ export function selectionBox(
   if (!bounds) return null
 
   const base = container.getBoundingClientRect()
-  const pad = 2
 
   return {
     left: bounds.left - base.left + container.scrollLeft - pad,

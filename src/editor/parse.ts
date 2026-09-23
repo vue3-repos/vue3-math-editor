@@ -4,8 +4,8 @@
 // consumed by the MathJSON / MathML / LaTeX exporters is derived here after
 // every change. The parser never throws: incomplete input becomes
 // `Placeholder` nodes (an empty row, a missing operand), and anything it
-// cannot make sense of is skipped and reported in `diagnostics` so the UI can
-// mark it later.
+// cannot make sense of is skipped and reported in `diagnostics`, with the
+// atoms it covers, so the UI can mark them (MathField's `marks`).
 //
 // Grammar, loosest to tightest binding:
 //
@@ -39,8 +39,9 @@ import type { Row, StructureAtom } from './layout'
 
 export interface ParseDiagnostic {
   message: string
-  // The atom the problem was found at, for highlighting in the UI.
-  atomId: string
+  // The atoms the problem covers (all of "1.2.3", say), for marking in the UI.
+  // They are consecutive atoms of one row.
+  atomIds: string[]
 }
 
 export interface ParseResult {
@@ -60,13 +61,15 @@ export function parseRow(row: Row): ParseResult {
 
 type Operator = '+' | '-' | '=' | '*' | ','
 
-type Token =
-  | { kind: 'number'; value: number; atomId: string }
-  | { kind: 'identifier'; name: string; atomId: string }
-  | { kind: 'operator'; op: Operator; atomId: string }
-  | { kind: 'function'; name: string; atomId: string }
-  | { kind: 'structure'; atom: StructureAtom; atomId: string }
-  | { kind: 'unknown'; value: string; atomId: string }
+// Every token records the atoms it was read from.
+type Token = { atomIds: string[] } & (
+  | { kind: 'number'; value: number }
+  | { kind: 'identifier'; name: string }
+  | { kind: 'operator'; op: Operator }
+  | { kind: 'function'; name: string }
+  | { kind: 'structure'; atom: StructureAtom }
+  | { kind: 'unknown'; value: string }
+)
 
 const OPERATOR_SYMBOLS: Record<string, Operator> = {
   '+': '+',
@@ -90,7 +93,7 @@ function tokenize(row: Row, diagnostics: ParseDiagnostic[]): Token[] {
     const atom = row[i]
 
     if (atom.kind === 'function') {
-      tokens.push({ kind: 'function', name: atom.name, atomId: atom.id })
+      tokens.push({ kind: 'function', name: atom.name, atomIds: [atom.id] })
       i++
       continue
     }
@@ -98,22 +101,24 @@ function tokenize(row: Row, diagnostics: ParseDiagnostic[]): Token[] {
     // A name: a letter, then letters, digits and underscores.
     if (startsName(atom)) {
       let name = ''
+      const atomIds: string[] = []
       while (i < row.length && continuesName(row[i])) {
         name += (row[i] as { value: string }).value
+        atomIds.push(row[i].id)
         i++
       }
 
       const functionName = functionForSpelling(name)
       tokens.push(
         functionName
-          ? { kind: 'function', name: functionName, atomId: atom.id }
-          : { kind: 'identifier', name, atomId: atom.id },
+          ? { kind: 'function', name: functionName, atomIds }
+          : { kind: 'identifier', name, atomIds },
       )
       continue
     }
 
     if (atom.kind !== 'symbol') {
-      tokens.push({ kind: 'structure', atom, atomId: atom.id })
+      tokens.push({ kind: 'structure', atom, atomIds: [atom.id] })
       i++
       continue
     }
@@ -121,12 +126,13 @@ function tokenize(row: Row, diagnostics: ParseDiagnostic[]): Token[] {
     // A run of digits and decimal points is one number.
     if (isNumberChar(atom.value)) {
       let text = ''
-      const start = atom
+      const atomIds: string[] = []
 
       while (i < row.length) {
         const next = row[i]
         if (next.kind !== 'symbol' || !isNumberChar(next.value)) break
         text += next.value
+        atomIds.push(next.id)
         i++
       }
 
@@ -134,22 +140,23 @@ function tokenize(row: Row, diagnostics: ParseDiagnostic[]): Token[] {
       let value = Number(text)
 
       if (Number.isNaN(value)) {
-        diagnostics.push({ message: `Malformed number "${text}"`, atomId: start.id })
+        diagnostics.push({ message: `Malformed number "${text}"`, atomIds })
         value = Number.parseFloat(text) || 0
       }
 
-      tokens.push({ kind: 'number', value, atomId: start.id })
+      tokens.push({ kind: 'number', value, atomIds })
       continue
     }
 
     const op = OPERATOR_SYMBOLS[atom.value]
+    const atomIds = [atom.id]
 
     if (op) {
-      tokens.push({ kind: 'operator', op, atomId: atom.id })
+      tokens.push({ kind: 'operator', op, atomIds })
     } else if (/^[A-Za-z]+$/.test(atom.value)) {
-      tokens.push({ kind: 'identifier', name: atom.value, atomId: atom.id })
+      tokens.push({ kind: 'identifier', name: atom.value, atomIds })
     } else {
-      tokens.push({ kind: 'unknown', value: atom.value, atomId: atom.id })
+      tokens.push({ kind: 'unknown', value: atom.value, atomIds })
     }
 
     i++
@@ -440,6 +447,6 @@ class Parser {
   private reportUnexpected(token: Token): void {
     const text =
       token.kind === 'operator' ? token.op : token.kind === 'unknown' ? token.value : token.kind
-    this.diagnostics.push({ message: `Unexpected "${text}"`, atomId: token.atomId })
+    this.diagnostics.push({ message: `Unexpected "${text}"`, atomIds: token.atomIds })
   }
 }

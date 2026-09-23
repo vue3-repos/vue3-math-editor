@@ -15,7 +15,7 @@ import Divider from 'primevue/divider'
 import Menu from 'primevue/menu'
 import Tag from 'primevue/tag'
 
-import MathField, { type NavigationState } from './MathField.vue'
+import MathField, { type Mark, type NavigationState } from './MathField.vue'
 import {
   type Command,
   type EditorState,
@@ -32,6 +32,7 @@ import {
 } from '../editor/commands'
 import { cursorAtEnd, describeCursor } from '../editor/cursor'
 import { EXPORT_FORMATS, type ExportFormat, contentMathML, exportRow } from '../editor/exports'
+import type { Row } from '../editor/layout'
 import { parseRow } from '../editor/parse'
 import { describeSelection, selectedAtoms, selectionOf } from '../editor/selection'
 import { astToLatex } from '../renderers/latex'
@@ -282,10 +283,23 @@ function buttonHtml(latex: string): string {
 // Output panels
 // ---------------------------------------------------------------------------
 
-const parsed = computed(() => {
-  const root = active().root
-  return root.length > 0 ? parseRow(root) : null
-})
+// Every line is parsed: each line's diagnostics are marked in its field, and
+// the active line's AST feeds the output panels. Results are cached by row, so
+// moving the cursor (which keeps the row) doesn't re-parse or hand MathField
+// new marks.
+const parseCache = new WeakMap<Row, ReturnType<typeof parseRow>>()
+function parseLine(root: Row) {
+  if (root.length === 0) return null
+  let result = parseCache.get(root)
+  if (!result) {
+    result = parseRow(root)
+    parseCache.set(root, result)
+  }
+  return result
+}
+const NO_MARKS: readonly Mark[] = []
+const parsedLines = computed(() => equations.value.map((equation) => parseLine(equation.root)))
+const parsed = computed(() => parsedLines.value[activeIndex.value] ?? null)
 
 const ast = computed(() => parsed.value?.ast ?? null)
 const diagnostics = computed(() => parsed.value?.diagnostics ?? [])
@@ -509,6 +523,7 @@ function toggleCopyMenu(event: Event) {
               :cursor="equation.cursor"
               :anchor="equation.anchor ?? null"
               :active="index === activeIndex"
+              :marks="parsedLines[index]?.diagnostics ?? NO_MARKS"
               @navigate="handleNavigate(index, $event)"
               @edit="handleEdit(index, $event)"
             />
