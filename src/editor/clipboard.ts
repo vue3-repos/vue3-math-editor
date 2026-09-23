@@ -29,6 +29,7 @@ import {
   group,
   newAtomId,
   root,
+  setChildRow,
   superscript,
   symbol,
 } from './layout'
@@ -93,6 +94,15 @@ function isAtom(value: unknown): value is Atom {
       )
     case 'derivative':
       return isRow(value.expr) && isRow(value.variable)
+    case 'piecewise':
+      return (
+        Array.isArray(value.pieces) &&
+        value.pieces.length > 0 &&
+        value.pieces.every(
+          (piece: unknown) => isObject(piece) && isRow(piece.value) && isRow(piece.condition),
+        ) &&
+        (value.otherwise === null || isRow(value.otherwise))
+      )
     default:
       return false
   }
@@ -100,9 +110,9 @@ function isAtom(value: unknown): value is Atom {
 
 function withFreshIds(atoms: Row): Row {
   return atoms.map((atom) => {
-    const copy = { ...atom, id: newAtomId() } as Atom
+    let copy = { ...atom, id: newAtomId() } as Atom
     for (const [branch, child] of childRows(atom)) {
-      ;(copy as unknown as Record<string, Row>)[branch] = withFreshIds(child)
+      copy = setChildRow(copy, branch, withFreshIds(child))
     }
     return copy
   })
@@ -227,6 +237,13 @@ function atomLatex(atom: Atom, previous: Atom | undefined): string {
         : `\\left(${rowToLatexSource(atom.body)}\\right)`
     case 'derivative':
       return `\\frac{\\mathrm{d}${rowToLatexSource(atom.expr)}}{\\mathrm{d}${rowToLatexSource(atom.variable)}}`
+    case 'piecewise': {
+      const lines = atom.pieces.map(
+        ({ value, condition }) => `${rowToLatexSource(value)} & ${rowToLatexSource(condition)}`,
+      )
+      if (atom.otherwise) lines.push(`${rowToLatexSource(atom.otherwise)} & \\text{otherwise}`)
+      return `\\begin{cases}${lines.join(' \\\\ ')}\\end{cases}`
+    }
   }
 }
 

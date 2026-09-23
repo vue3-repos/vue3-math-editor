@@ -10,6 +10,7 @@ import {
   derivative,
   fraction,
   group,
+  piecewise,
   root,
   row,
   superscript,
@@ -79,6 +80,12 @@ export const SAMPLES: readonly Sample[] = [
     label: 'Vm_init = 2Vm·cost',
     keys: ['Vm_init=2Vm*cost'],
     build: () => row('Vm_init=2Vm·cost'),
+  },
+  {
+    id: 'piecewise',
+    label: 'y = { a if t < 1, otherwise 0.0 }',
+    keys: ['y=\\cases ', 'a', '{ArrowRight}', 't<1'],
+    build: () => row('y=', piecewise([[row('a'), row('t<1')]], row('0.0'))),
   },
   {
     id: 'bracket-power',

@@ -23,7 +23,8 @@ export interface LayoutLatexOptions {
 }
 
 // ---------------------------------------------------------------------------
-// Row path encoding for data-row attributes: "r", "r/2.num", "r/2.num/0.sup"
+// Row path encoding for data-row attributes: "r", "r/2.num", "r/2.num/0.sup",
+// "r/0.cond1"
 // ---------------------------------------------------------------------------
 
 export function encodeRowPath(path: RowPath): string {
@@ -39,7 +40,7 @@ export function decodeRowPath(encoded: string | null | undefined): RowPath | nul
   const path: RowPath = []
 
   for (const part of rest) {
-    const match = /^(\d+)\.([a-z]+)$/.exec(part)
+    const match = /^(\d+)\.([a-z]+\d*)$/.exec(part)
     if (!match) return null
     path.push({ atom: Number(match[1]), branch: match[2] as RowPathSegment['branch'] })
   }
@@ -250,6 +251,19 @@ function renderAtom(
         atom.id,
         `\\frac{\\mathrm{d}${child(atom.expr, 'expr')}}{\\mathrm{d}${child(atom.variable, 'variable')}}`,
       )
+
+    case 'piecewise': {
+      // One line per piece, value & condition; otherwise's condition cell is
+      // the word "otherwise", which is not a row.
+      const lines = atom.pieces.map(
+        ({ value, condition }, i) =>
+          `${child(value, `value${i}`)} & ${child(condition, `cond${i}`)}`,
+      )
+      if (atom.otherwise) {
+        lines.push(`${child(atom.otherwise, 'otherwise')} & \\text{otherwise}`)
+      }
+      return tag(atom.id, `\\begin{cases}${lines.join(' \\\\ ')}\\end{cases}`)
+    }
   }
 }
 

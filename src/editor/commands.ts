@@ -27,8 +27,10 @@ import {
   getChildRow,
   getRow,
   group,
+  piecewise,
   root,
   row,
+  setChildRow,
   superscript,
   symbol,
 } from './layout'
@@ -71,8 +73,7 @@ function updateRow(tree: Row, path: RowPath, update: (row: Row) => Row): Row {
   if (!child) throw new Error('Cursor path does not resolve')
 
   const next = tree.slice()
-  // Branch names are the atoms' own property names (num, den, sup, …).
-  next[head.atom] = { ...atom, [head.branch]: updateRow(child, rest, update) } as Atom
+  next[head.atom] = setChildRow(atom, head.branch, updateRow(child, rest, update))
   return next
 }
 
@@ -123,6 +124,14 @@ function ownerOf(state: EditorState, depth = state.cursor.path.length): Owner | 
 
 // Replace a structure atom by the contents of all its rows, in order.
 function unwrap(state: EditorState, owner: Owner, cursorOffset: number): EditorState {
+  // A piecewise's rows don't join up into anything meaningful, so it isn't
+  // dissolved: the cursor just steps out, before it (Backspace) or after it
+  // (Delete). Removing pieces is done piece by piece.
+  if (owner.atom.kind === 'piecewise') {
+    const offset = cursorOffset === 0 ? owner.index : owner.index + 1
+    return { root: state.root, cursor: { path: owner.rowPath, offset } }
+  }
+
   const content = childRows(owner.atom).flatMap(([, r]) => r)
   return splice(state, owner.rowPath, owner.index, 1, content, {
     path: owner.rowPath,
@@ -235,6 +244,24 @@ export const typeEquals: Command = (current) => {
   }
 
   return insertSymbol('=')(current)
+}
+
+// A piecewise with one piece and an otherwise pre-filled with 0.0, with the
+// cursor in the first value. A selection becomes the first value.
+export const insertPiecewise: Command = (current) => {
+  const selection = selectionOf(current)
+
+  if (selection) {
+    const { path, start, end } = selection
+    const content = requireRow(current.root, path).slice(start, end)
+    const atom = piecewise([[content, []]], row('0.0'))
+    return splice(current, path, start, end - start, [atom], {
+      path: [...path, { atom: start, branch: 'cond0' }],
+      offset: 0,
+    })
+  }
+
+  return insertStructure(piecewise([[[], []]], row('0.0')), 'value0')(current)
 }
 
 // Insert a structure atom at the cursor and move into one of its rows.
@@ -587,6 +614,9 @@ export function namedCommand(name: string): Command {
     case 'pow':
     case 'power':
       return insertSuperscript
+    case 'cases':
+    case 'piecewise':
+      return insertPiecewise
   }
 
   const operator = conditionOperatorForCommand(name)

@@ -10,6 +10,7 @@ import {
   fraction,
   func,
   group,
+  piecewise,
   root,
   row,
   superscript,
@@ -169,6 +170,17 @@ function randomRow(rand: () => number, depth: number): Row {
         break
       case 6:
         atoms.push(func(rand() < 0.5 ? 'sin' : 'asin'))
+        break
+      case 7:
+        atoms.push(
+          piecewise(
+            Array.from({ length: 1 + Math.floor(rand() * 3) }, (): [Row, Row] => [
+              child(),
+              child(),
+            ]),
+            rand() < 0.5 ? child() : null,
+          ),
+        )
         break
       default:
         atoms.push(symbol(GLYPHS[Math.floor(rand() * GLYPHS.length)]))

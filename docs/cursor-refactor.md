@@ -186,10 +186,35 @@ Decisions so far:
 - **Exports:** Content MathML `<piecewise><piece>…</piece><otherwise>…</otherwise>`,
   MathJSON `Which`, LaTeX `cases` (also read when pasting).
 
-To work out while building: the first structure with a variable number of rows needs
-indexed row-path branches; editing gestures (proposed: Enter in a piece adds one below,
-Backspace in an empty piece removes it, → and Tab move from a value to its condition);
-and a rendering/caret prototype inside KaTeX's table layout, to be done first.
+**Prototype (done): layout, rendering and caret.**
+
+- **Layout:** `PiecewiseAtom { pieces: [{ value, condition }], otherwise: Row | null }`
+  (layout.ts). Its row branches are indexed: `value0`, `cond0`, `value1`, …,
+  `otherwise`, and `childRows` lists them in that (reading) order, so → / ← /
+  Tab / selection / placeholders work unchanged. Row paths encode as `r/2.cond1`.
+  `setChildRow` replaces one child row of any atom; `updateRow` (commands) and
+  `withFreshIds` (clipboard) use it instead of writing `atom[branch]`, which can't
+  address an indexed piece.
+- **Vertical movement:** two columns. ↑/↓ move between values (with otherwise at the
+  bottom) or between conditions; ↓ from the last condition goes to otherwise, the only
+  row below it.
+- **Rendering:** `\begin{cases} value & condition \\ … \\ otherwise & \text{otherwise}
+  \end{cases}`, each cell a tagged row. KaTeX's array layout needed no changes to caret
+  geometry or hit-testing: clicking a cell, an empty slot, or beside the brace all land
+  where expected. `cases` sets cells in text style (smaller fractions, as in print);
+  `dcases` gave full-size fractions but crammed rows together.
+- **Inserting:** the toolbar button or `\cases` / `\piecewise`: one empty piece and
+  otherwise `0.0`, cursor in the first value. A selection becomes the first value (the
+  cursor then goes to its condition).
+- **Backspace/Delete** at the edge of a piecewise step out of it rather than dissolving
+  it (its rows don't join up into anything meaningful).
+- **Copy:** the editor format round-trips; LaTeX copies as `cases`.
+- **Not yet:** parsing (a piecewise parses as a placeholder, so the outputs show
+  `Missing`), adding and removing pieces and otherwise, and pasting `cases` LaTeX.
+
+Next: editing gestures (proposed: Enter in a piece adds one below, Backspace in an empty
+piece removes it, and some way to delete and re-add otherwise), then parsing and the
+exports.
 
 ### Rendering and caret notes (step 3)
 

@@ -29,6 +29,7 @@ import {
   emptyState,
   insertAbs,
   insertDerivative,
+  insertPiecewise,
   insertFraction,
   insertFunction,
   insertNthRoot,
@@ -279,6 +280,11 @@ const structureButtons: ToolButton[] = [
     command: insertDerivative,
   },
   { latex: '\\sin', title: 'Sine  ( sin or \\sin )', command: insertFunction('sin') },
+  {
+    latex: '\\begin{cases}a&p\\\\b&q\\end{cases}',
+    title: 'Piecewise  ( \\cases )',
+    command: insertPiecewise,
+  },
 ]
 
 const operatorButtons: ToolButton[] = [

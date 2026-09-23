@@ -65,7 +65,8 @@ export function type(...parts: string[]): EditorState {
 
 // A compact text form of the tree:
 //   fraction [num/den], superscript ^{…}, brackets (…) and |…|,
-//   roots √{…} and √[index]{…}, derivative d{…}/d{…}, functions by name.
+//   roots √{…} and √[index]{…}, derivative d{…}/d{…}, functions by name,
+//   piecewise {value0 : cond0; …; otherwise}.
 // The caret is shown as ‸; a selection as «…» (and then no caret).
 export function show(state: EditorState): string {
   const selection = selectionOf(state)
@@ -110,6 +111,13 @@ export function show(state: EditorState): string {
         case 'derivative':
           out += `d{${child('expr')}}/d{${child('variable')}}`
           break
+        case 'piecewise': {
+          // {value0 : cond0; value1 : cond1; otherwise}
+          const pieces = atom.pieces.map((_, i) => `${child(`value${i}`)} : ${child(`cond${i}`)}`)
+          if (atom.otherwise) pieces.push(child('otherwise'))
+          out += `{${pieces.join('; ')}}`
+          break
+        }
       }
     }
 

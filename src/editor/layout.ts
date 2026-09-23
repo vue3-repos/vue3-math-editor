@@ -2,8 +2,8 @@
 //
 // This is deliberately *not* the semantic AST. A row is a flat, ordered list
 // of atoms — exactly what the user sees left to right — and structure atoms
-// (fractions, superscripts, roots, brackets, derivatives) own named child
-// rows. The semantic `AstNode` is derived from this tree by a parser; editing
+// (fractions, superscripts, roots, brackets, derivatives, piecewise) own
+// named child rows. The semantic `AstNode` is derived from this tree by a parser; editing
 // never manipulates operator precedence directly.
 //
 // Cursor positions are gaps in rows (see cursor.ts): a row of n atoms has
@@ -12,7 +12,18 @@
 
 export type Row = Atom[]
 
-export type BranchName = 'num' | 'den' | 'sup' | 'index' | 'body' | 'expr' | 'variable'
+export type BranchName =
+  | 'num'
+  | 'den'
+  | 'sup'
+  | 'index'
+  | 'body'
+  | 'expr'
+  | 'variable'
+  // A piecewise's rows: piece i's value and condition, and the otherwise row.
+  | `value${number}`
+  | `cond${number}`
+  | 'otherwise'
 
 interface AtomBase {
   // Stable identity for rendering (DOM tagging) and hit-testing. Never used
@@ -71,7 +82,26 @@ export interface DerivativeAtom extends AtomBase {
   variable: Row
 }
 
-export type StructureAtom = FractionAtom | SuperscriptAtom | RootAtom | GroupAtom | DerivativeAtom
+// A piecewise definition (MathML <piecewise>): each piece is a value and the
+// condition under which it applies, with an optional otherwise value.
+// Drawn as cases, a brace with one line per piece:
+//   ⎧ value₀     condition₀
+//   ⎨ value₁     condition₁
+//   ⎩ otherwise  otherwise
+// Its rows are branches value0, cond0, value1, cond1, …, otherwise.
+export interface PiecewiseAtom extends AtomBase {
+  kind: 'piecewise'
+  pieces: Array<{ value: Row; condition: Row }>
+  otherwise: Row | null
+}
+
+export type StructureAtom =
+  | FractionAtom
+  | SuperscriptAtom
+  | RootAtom
+  | GroupAtom
+  | DerivativeAtom
+  | PiecewiseAtom
 
 export type Atom = SymbolAtom | FunctionAtom | StructureAtom
 
@@ -115,9 +145,49 @@ export function childRows(atom: Atom): Array<[BranchName, Row]> {
         ['expr', atom.expr],
         ['variable', atom.variable],
       ]
+    case 'piecewise':
+      return [
+        ...atom.pieces.flatMap(
+          ({ value, condition }, i): Array<[BranchName, Row]> => [
+            [`value${i}`, value],
+            [`cond${i}`, condition],
+          ],
+        ),
+        ...(atom.otherwise ? [['otherwise', atom.otherwise] as [BranchName, Row]] : []),
+      ]
     default:
       return []
   }
+}
+
+// A piecewise branch name split into its part and piece index:
+// "cond2" -> { part: 'cond', piece: 2 }; "otherwise" -> { part: 'otherwise' }.
+export function piecewiseBranch(
+  branch: BranchName,
+): { part: 'value' | 'cond'; piece: number } | { part: 'otherwise' } | null {
+  if (branch === 'otherwise') return { part: 'otherwise' }
+  const match = /^(value|cond)(\d+)$/.exec(branch)
+  return match ? { part: match[1] as 'value' | 'cond', piece: Number(match[2]) } : null
+}
+
+// A copy of `atom` with its child row `branch` replaced.
+export function setChildRow<A extends Atom>(atom: A, branch: BranchName, child: Row): A {
+  if (atom.kind === 'piecewise') {
+    const where = piecewiseBranch(branch)
+    if (!where) throw new Error(`No branch ${branch} in a piecewise`)
+    if (where.part === 'otherwise') return { ...atom, otherwise: child }
+    const pieces = atom.pieces.map((piece, i) =>
+      i !== where.piece
+        ? piece
+        : where.part === 'value'
+          ? { ...piece, value: child }
+          : { ...piece, condition: child },
+    )
+    return { ...atom, pieces }
+  }
+
+  // Other atoms' branch names are their own property names (num, den, …).
+  return { ...atom, [branch]: child }
 }
 
 export function getChildRow(atom: Atom, branch: BranchName): Row | null {
@@ -195,6 +265,18 @@ export function group(
 
 export function derivative(expr: Row = [], variable: Row = []): DerivativeAtom {
   return { kind: 'derivative', id: newAtomId(), expr, variable }
+}
+
+export function piecewise(
+  pieces: Array<[value: Row, condition: Row]> = [[[], []]],
+  otherwise: Row | null = null,
+): PiecewiseAtom {
+  return {
+    kind: 'piecewise',
+    id: newAtomId(),
+    pieces: pieces.map(([value, condition]) => ({ value, condition })),
+    otherwise,
+  }
 }
 
 // Convenience row builder: strings are split into one symbol atom per

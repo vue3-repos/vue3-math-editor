@@ -449,6 +449,10 @@ class Parser {
           expression: this.child(atom.expr),
           variable: this.child(atom.variable),
         }
+      case 'piecewise':
+        // Prototype: the layout and caret work, but a piecewise isn't parsed
+        // or exported yet.
+        return placeholder()
       case 'superscript':
         // Unreachable: superscripts never start a primary (see startsPrimary).
         return { type: 'Power', base: placeholder(), exponent: this.child(atom.sup) }

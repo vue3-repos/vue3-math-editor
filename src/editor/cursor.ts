@@ -24,6 +24,7 @@ import {
   type RowPath,
   childRows,
   getRow,
+  piecewiseBranch,
   rowPathsEqual,
 } from './layout'
 
@@ -201,6 +202,20 @@ const VERTICAL_STACKS: Partial<Record<Atom['kind'], BranchName[]>> = {
   root: ['index', 'body'],
 }
 
+// The stack of rows `branch` belongs to, top to bottom. A piecewise has two
+// columns: the values (with otherwise at the bottom) and the conditions,
+// whose last one goes down to otherwise too, the only row below it.
+function verticalStack(atom: Atom, branch: BranchName): BranchName[] | null {
+  if (atom.kind !== 'piecewise') return VERTICAL_STACKS[atom.kind] ?? null
+
+  const where = piecewiseBranch(branch)
+  if (!where) return null
+  const part = where.part === 'otherwise' ? 'value' : where.part
+  const column = atom.pieces.map((_, i): BranchName => `${part}${i}`)
+
+  return atom.otherwise ? [...column, 'otherwise'] : column
+}
+
 // Chooses the offset to land on in the target row. The default keeps the
 // same offset, clamped to the row. The renderer can pass one that matches
 // the caret's x coordinate instead.
@@ -219,7 +234,7 @@ function moveVertical(
   // numerator, ↓ goes to the outer denominator.
   for (let depth = cursor.path.length; depth > 0; depth--) {
     const parent = parentOf(root, cursor.path.slice(0, depth))!
-    const stack = VERTICAL_STACKS[parent.atom.kind]
+    const stack = verticalStack(parent.atom, parent.branch)
 
     if (!stack) {
       continue
