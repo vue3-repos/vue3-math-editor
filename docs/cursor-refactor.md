@@ -215,7 +215,8 @@ to a focused, non-editable `div`, so no hidden text area is needed.
     with brackets dropped from a bracketed operand. `^` takes a braced group, one
     character, or a whole run of digits (`x^10`). Letters spelling a function become
     that function, and `*` becomes `·`.
-  - Subscripts aren't supported: the content of `_…` is kept inline.
+  - Subscripts aren't supported: the underscore is kept literally as part of the name, so
+    `x_{12}` pastes as the name `x_12`.
   - Pasting replaces the selection and leaves the cursor after the pasted atoms (one undo
     step).
 - `rowToLatexSource` and `latexToRow` round-trip every atom kind (unit-tested).
@@ -285,7 +286,6 @@ multi-line list, command mode, toolbar and output panels.
 - A keyboard shortcut for "copy as" (e.g. Ctrl+Shift+C for the last format used).
 - Make the LaTeX output panel show the same LaTeX as copying does.
 - Pasting several lines as several equations.
-- Subscripts (`_`), if needed for variable names like x₁.
 - Marking parser diagnostics on the offending atom (each diagnostic carries its
   `atomId`).
 - Coalescing consecutive typing into one undo step.
