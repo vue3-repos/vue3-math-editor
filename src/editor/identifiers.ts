@@ -16,6 +16,7 @@
 // rendering.
 
 import { type Atom, type Row, childRows } from './layout'
+import { type NumberRun, numberAt } from './numbers'
 import { FUNCTION_REGISTRY } from '../registry/nodes'
 
 // Names written as a command (\alpha) that insert a Greek letter.
@@ -53,12 +54,19 @@ export interface NameRun {
   functionName: string | null
 }
 
-// Every name in a row, left to right.
+// Every name in a row, left to right. Numbers are skipped as a whole, so the
+// "e" of "1e-08" doesn't start a name.
 export function nameRuns(row: Row): NameRun[] {
   const runs: NameRun[] = []
   let i = 0
 
   while (i < row.length) {
+    const number = numberAt(row, i)
+    if (number) {
+      i = number.end
+      continue
+    }
+
     if (!startsName(row[i])) {
       i++
       continue
@@ -72,6 +80,30 @@ export function nameRuns(row: Row): NameRun[] {
     }
 
     runs.push({ start, end: i, name, functionName: functionForSpelling(name) ?? null })
+  }
+
+  return runs
+}
+
+// Every number in a row, left to right. Digits inside a name ("x2") are not
+// numbers.
+export function numberRuns(row: Row): NumberRun[] {
+  const runs: NumberRun[] = []
+  let i = 0
+
+  while (i < row.length) {
+    if (startsName(row[i])) {
+      while (i < row.length && continuesName(row[i])) i++
+      continue
+    }
+
+    const number = numberAt(row, i)
+    if (number) {
+      runs.push(number)
+      i = number.end
+    } else {
+      i++
+    }
   }
 
   return runs

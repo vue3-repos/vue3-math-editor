@@ -18,6 +18,10 @@ export type AstNode =
 export interface NumberNode {
   type: 'Number'
   value: number
+  // Written in scientific notation ("1e-08"): the mantissa as typed and the
+  // exponent, for exporters that keep the notation (Content MathML's
+  // e-notation). `value` is the number itself (1e-8).
+  scientific?: { mantissa: string; exponent: number }
 }
 
 export interface PlaceholderNode {

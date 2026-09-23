@@ -50,7 +50,9 @@ export function contentMathML(row: Row, options: ExportOptions = {}): string {
 
 // Re-indent simple XML (elements and text only, as the MathML renderer
 // produces): whitespace between tags is dropped and each element goes on its
-// own line; an element holding only text stays on one line (<ci>x</ci>).
+// own line; an element holding only text, perhaps with empty elements between
+// (<ci>x</ci>, <cn type="e-notation">1<sep/>-8</cn>), stays on one line, so no
+// whitespace is added inside it.
 export function formatXml(xml: string, indent = '  '): string {
   const tokens = xml.match(/<[^>]+>|[^<]+/g) ?? []
   const lines: string[] = []
@@ -76,12 +78,21 @@ export function formatXml(xml: string, indent = '  '): string {
       continue
     }
 
-    // <tag>text</tag> on one line.
-    const text = tokens[i + 1]
-    const close = tokens[i + 2]
-    if (text && !text.startsWith('<') && text.trim() && close?.startsWith('</')) {
-      lines.push(indent.repeat(depth) + token + text.trim() + close)
-      i += 2
+    // <tag>text</tag> (or text<sep/>text) on one line.
+    let end = i + 1
+    while (end < tokens.length && !tokens[end].startsWith('</')) {
+      const inner = tokens[end]
+      if (inner.startsWith('<') && !inner.endsWith('/>')) break
+      end++
+    }
+    const inline = tokens.slice(i + 1, end)
+    if (
+      tokens[end]?.startsWith('</') &&
+      inline.some((inner) => !inner.startsWith('<') && inner.trim())
+    ) {
+      const content = inline.map((inner) => (inner.startsWith('<') ? inner : inner.trim())).join('')
+      lines.push(indent.repeat(depth) + token + content + tokens[end])
+      i = end
       continue
     }
 

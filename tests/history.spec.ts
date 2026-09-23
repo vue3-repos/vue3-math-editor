@@ -40,6 +40,10 @@ describe('undoGroup', () => {
     }
   })
 
+  it('an exponent sign does not start a new step', () => {
+    expect(undoGroup(0, { kind: 'type', text: '-', exponentSign: true }).fresh).toBe(false)
+  })
+
   it('starts a new step when typing replaces a selection', () => {
     expect(undoGroup(0, { kind: 'type', text: 'x', replacedSelection: true }).fresh).toBe(true)
   })

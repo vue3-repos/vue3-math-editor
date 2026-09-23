@@ -12,7 +12,7 @@
 // Everything here is pure; MathField wires it to the browser's clipboard
 // events.
 
-import { GREEK_NAMES, functionForSpelling, nameRuns } from './identifiers'
+import { GREEK_NAMES, functionForSpelling, nameRuns, numberRuns } from './identifiers'
 import {
   type Atom,
   type Row,
@@ -140,12 +140,30 @@ const isOperatorAtom = (atom: Atom | undefined) =>
 // Plain, readable LaTeX for a row (no editor markup). A name of more than
 // one character is written \mathit{Vm\_init} so LaTeX treats it as one
 // variable; a function spelling as the function (\sin). An empty row is
-// written as \square, which latexToRow reads back as an empty row.
+// written as \square, which latexToRow reads back as an empty row. A number
+// in scientific notation is written 1\mathrm{e}{-08}: upright e, and the
+// exponent braced so its sign gets no operator spacing.
 export function rowToLatexSource(row: Row): string {
   const runs = new Map(nameRuns(row).map((run) => [run.start, run]))
+  const scientific = new Map(
+    numberRuns(row)
+      .filter((run) => run.exponent !== null)
+      .map((run) => [run.start, run]),
+  )
   let out = ''
 
   for (let i = 0; i < row.length; ) {
+    const number = scientific.get(i)
+    if (number) {
+      const chars = row
+        .slice(number.start, number.end)
+        .map((atom) => (atom as { value: string }).value.replace('−', '-'))
+      const e = chars.findIndex((c) => c === 'e' || c === 'E')
+      out += `${chars.slice(0, e).join('')}\\mathrm{${chars[e]}}{${chars.slice(e + 1).join('')}}`
+      i = number.end
+      continue
+    }
+
     const run = runs.get(i)
 
     if (run) {
@@ -517,6 +535,13 @@ class LatexReader {
 
   private readNamed(command: string, text: string, atoms: Row): void {
     if (!text) return
+
+    // The e of a number in scientific notation, as rowToLatexSource writes
+    // it (1\mathrm{e}{-08}), or an upright e on its own.
+    if (command === 'mathrm' && (text === 'e' || text === 'E')) {
+      atoms.push(symbol(text))
+      return
+    }
 
     if (command === 'mathrm' && text === 'd') {
       const d = symbol('d')

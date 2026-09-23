@@ -122,6 +122,34 @@ are typed. The user-facing rules and their rationale are in
   Pasting reads letters as typed characters (so plain text follows the same rules), and
   keeps `_` literally: `x_{12}` pastes as the name `x_12`.
 
+### Scientific numbers
+
+Numbers may be written in scientific notation, typed character by character like
+names: `1e-08`, `6.022E23`, `2.5e+3`. User-facing rules are in `writing-equations.md`.
+
+- **Recognising them** (`editor/numbers.ts`): `numberAt(row, i)` reads digits and
+  decimal points, then an exponent only when `e`/`E`, an optional sign and at least one
+  digit follow. So `2e` is 2·e and `2e-x` is 2·e − x, while `2e5x` is 2e5·x. The name
+  and number scans share one pass (`nameRuns`/`numberRuns` in identifiers.ts), so the e
+  of a number never starts a name, and digits after a letter stay in the name (`x2e5`).
+- **AST:** a `Number` keeps its value and, when written in scientific notation,
+  `scientific: { mantissa, exponent }` (the mantissa as typed). A decimal point in the
+  exponent (`1e-0.5`) is a malformed number, and a value too big for a double (`1e999`)
+  is reported as out of range; both are marked like other parser diagnostics.
+- **Exports:** MathJSON writes the number (`1e-8`). Content MathML uses MathML's
+  e-notation, `<cn type="e-notation">1<sep/>-8</cn>`, which the CellML 2.0 spec allows
+  alongside `real`; in CellML mode it also gets `cellml:units`. A plain number that
+  JavaScript prints in exponent form (`0.0000001`) is written the same way, as a
+  `type="real"` `<cn>` can't hold an exponent. `formatXml` keeps an element holding text
+  and `<sep/>` on one line, so no whitespace is added inside the `<cn>`. LaTeX is
+  `1\mathrm{e}{-08}`, which `latexToRow` reads back as typed (`\mathrm{e}` is the letter
+  e, not a function).
+- **Rendering:** the number is one piece (an exponent after it attaches to the whole
+  number). The e is `\mathrm{e}` and the sign is braced (`{-}`): a bare `-` stays a
+  binary operator inside `\htmlData` and would get operator spacing.
+- **Undo:** the sign after a number's e doesn't start a new undo step the way an
+  operator does, so `1e-08` is typed in one step (`isExponentSignPosition`).
+
 ### Rendering and caret notes (step 3)
 
 - `renderers/layoutLatex.ts` wraps every atom in `\htmlData{atom=<id>}` and every row in

@@ -38,6 +38,13 @@ test('undo takes back one operator and what was typed after it', async () => {
   await wb.expectMathJson(null)
 })
 
+test('a number in scientific notation is typed in one step', async () => {
+  await wb.type('k=1e-08')
+  await wb.expectMathJson(['Equal', 'k', 1e-8])
+  await undo()
+  await wb.expectMathJson('k')
+})
+
 test('moving the cursor starts a new step', async () => {
   await wb.type('ab')
   await wb.press('ArrowLeft')

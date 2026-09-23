@@ -46,6 +46,30 @@ a denominator, and a root has a body and, for an nth root, an index.
 A run of digits, with at most one decimal point, is one number: `12`, `3.5`, `.5`.
 Something like `1.2.3` is reported as a malformed number under the equation.
 
+### Scientific notation
+
+Type scientific numbers as you would in code: the number, `e` (or `E`), an optional
+`+` or `-`, then the exponent's digits. `1e-08`, `6.022E23` and `2.5e+3` are each one
+number, and are shown as typed, with an upright e and no spacing around the sign:
+1e−08.
+
+The e only belongs to the number when digits follow it (with or without a sign), so
+while you type `1e` it's still 1·e until the exponent's first digit arrives. Other
+cases:
+
+| You type | It means |
+|---|---|
+| `1e-08` | the number 0.00000001 |
+| `2e` | 2 · e |
+| `2e-x` | 2 · e − x |
+| `2e5x` | 200000 · x |
+| `x2e5` | the name `x2e5` (a name continues through letters and digits) |
+| `1e-0.5` | a malformed number: the exponent must be a whole number |
+
+In exports, MathJSON has the number itself (`1e-8`). Content MathML keeps the
+notation as e-notation, `<cn type="e-notation">1<sep/>-8</cn>`, which CellML also
+accepts. Copied LaTeX is `1\mathrm{e}{-08}`, which pastes back as typed.
+
 ## Names (variables)
 
 **Rule:** a name starts with a letter and continues with letters, digits and

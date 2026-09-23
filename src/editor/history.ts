@@ -18,6 +18,9 @@ export interface EditInfo {
   text?: string
   // The edit replaced or deleted a selection.
   replacedSelection?: boolean
+  // For 'type': a sign typed as part of a number's exponent ("1e-08"), which
+  // doesn't start a new step the way an operator does.
+  exponentSign?: boolean
 }
 
 export const OTHER_EDIT: EditInfo = { kind: 'other' }
@@ -42,7 +45,7 @@ export function undoGroup(line: number, edit: EditInfo): UndoGroup {
       // Typing over a selection starts a new step; what's typed next joins it.
       return {
         key: `type:${line}`,
-        fresh: !!edit.replacedSelection || OPERATORS.has(edit.text ?? ''),
+        fresh: !!edit.replacedSelection || (OPERATORS.has(edit.text ?? '') && !edit.exponentSign),
       }
     case 'deleteBackward':
     case 'deleteForward':

@@ -1,4 +1,4 @@
-import type { AstNode } from '../types/ast'
+import type { AstNode, NumberNode } from '../types/ast'
 import { getFunctionDefinition } from '../registry/nodes'
 
 function assertNever(value: never): never {
@@ -25,12 +25,28 @@ export interface ContentMathMLOptions {
 // the user (or libCellML's report) to replace.
 export const CELLML_UNDEFINED_UNITS = 'undefined'
 
+// A number as <cn>. Scientific notation is kept as MathML's e-notation,
+// <cn type="e-notation">1<sep/>-8</cn>, which CellML also accepts. A plain
+// number that JavaScript would print in exponent form (1e-7, 1e+21) is
+// written the same way, since a type="real" <cn> can't hold an exponent.
+function renderNumber(node: NumberNode, options: ContentMathMLOptions): string {
+  const units = options.cellml ? ` cellml:units="${CELLML_UNDEFINED_UNITS}"` : ''
+  const [digits, exponent] = String(node.value).split('e')
+  const eNotation = node.scientific
+    ? { mantissa: node.scientific.mantissa, exponent: node.scientific.exponent }
+    : exponent !== undefined
+      ? { mantissa: digits, exponent: Number(exponent) }
+      : null
+
+  return eNotation
+    ? `<cn${units} type="e-notation">${eNotation.mantissa}<sep/>${eNotation.exponent}</cn>`
+    : `<cn${units}>${node.value}</cn>`
+}
+
 export function astToContentMathML(node: AstNode, options: ContentMathMLOptions = {}): string {
   switch (node.type) {
     case 'Number':
-      return options.cellml
-        ? `<cn cellml:units="${CELLML_UNDEFINED_UNITS}">${node.value}</cn>`
-        : `<cn>${node.value}</cn>`
+      return renderNumber(node, options)
 
     case 'Identifier':
       return `<ci>${node.name}</ci>`

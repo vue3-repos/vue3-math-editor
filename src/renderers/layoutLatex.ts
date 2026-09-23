@@ -12,7 +12,7 @@
 
 import type { Atom, Row, RowPath, RowPathSegment } from '../editor/layout'
 import { rowPathsEqual } from '../editor/layout'
-import { GREEK_NAMES, nameRuns } from '../editor/identifiers'
+import { GREEK_NAMES, nameRuns, numberRuns } from '../editor/identifiers'
 import { getFunctionDefinition } from '../registry/nodes'
 
 export interface LayoutLatexOptions {
@@ -90,6 +90,16 @@ function nameGlyph(char: string): string {
   return char === '_' ? '\\_' : `\\mathit{${char}}`
 }
 
+// One character of a number in scientific notation. The exponent's sign is
+// braced, which makes it an ordinary atom: a bare - would still be a binary
+// operator inside \\htmlData and get operator spacing.
+function scientificGlyph(char: string): string {
+  if (char === 'e' || char === 'E') return `\\mathrm{${char}}`
+  if (char === '-' || char === '−') return '{-}'
+  if (char === '+') return '{+}'
+  return char
+}
+
 function renderSymbol(id: string, value: string): string {
   if (value in BINARY) return `\\mathbin{${tag(id, BINARY[value])}}`
   if (value in RELATION) return `\\mathrel{${tag(id, RELATION[value])}}`
@@ -121,6 +131,11 @@ function renderRow(row: Row, path: RowPath, options: LayoutLatexOptions): string
   } else {
     const pieces: string[] = []
     const runs = new Map(nameRuns(row).map((run) => [run.start, run]))
+    const scientific = new Map(
+      numberRuns(row)
+        .filter((run) => run.exponent !== null)
+        .map((run) => [run.start, run]),
+    )
 
     for (let index = 0; index < row.length; index++) {
       const atom = row[index]
@@ -148,6 +163,17 @@ function renderRow(row: Row, path: RowPath, options: LayoutLatexOptions): string
           )
         }
         index = run.end - 1
+        continue
+      }
+
+      // A number in scientific notation is one piece, drawn tight as typed
+      // with an upright e and no operator spacing around the exponent's sign:
+      // 1e−08.
+      const number = scientific.get(index)
+      if (number) {
+        const chars = row.slice(number.start, number.end) as Array<Atom & { kind: 'symbol' }>
+        pieces.push(`{${chars.map((c) => tag(c.id, scientificGlyph(c.value))).join('')}}`)
+        index = number.end - 1
         continue
       }
 

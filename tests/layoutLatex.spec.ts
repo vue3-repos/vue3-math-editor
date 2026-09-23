@@ -140,9 +140,10 @@ function mulberry32(seed: number): () => number {
   }
 }
 
-// Includes LaTeX special characters, which must be escaped, and the letters
-// of "sin", so runs sometimes spell a function name.
-const GLYPHS = Array.from('xysinsin2.+-=*,?{}^_\\%&#~$')
+// Includes LaTeX special characters, which must be escaped, the letters of
+// "sin", so runs sometimes spell a function name, and e/E, so some runs are
+// numbers in scientific notation.
+const GLYPHS = Array.from('xysinsin2.+-=*,?{}^_\\%&#~$eE')
 
 function randomRow(rand: () => number, depth: number): Row {
   const length = Math.floor(rand() * 6)

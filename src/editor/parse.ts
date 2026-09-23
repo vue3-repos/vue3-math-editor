@@ -32,9 +32,13 @@
 //   word (a Greek letter such as "alpha", inserted by a command) is its own
 //   identifier. Function atoms (from \sin or the toolbar) are functions.
 // - A superscript attaches to the factor before it: `x^2` -> Power(x, 2).
+// - Numbers (see numbers.ts) may be in scientific notation: `1e-08` is one
+//   Number with value 1e-8, keeping its notation for the exporters; `2e` and
+//   `2e-x` are 2·e and 2·e − x.
 
-import type { AstNode } from '../types/ast'
+import type { AstNode, NumberNode } from '../types/ast'
 import { continuesName, functionForSpelling, startsName } from './identifiers'
+import { numberAt } from './numbers'
 import type { Row, StructureAtom } from './layout'
 
 export interface ParseDiagnostic {
@@ -63,7 +67,7 @@ type Operator = '+' | '-' | '=' | '*' | ','
 
 // Every token records the atoms it was read from.
 type Token = { atomIds: string[] } & (
-  | { kind: 'number'; value: number }
+  | { kind: 'number'; value: number; scientific?: NumberNode['scientific'] }
   | { kind: 'identifier'; name: string }
   | { kind: 'operator'; op: Operator }
   | { kind: 'function'; name: string }
@@ -81,9 +85,6 @@ const OPERATOR_SYMBOLS: Record<string, Operator> = {
   '×': '*',
   ',': ',',
 }
-
-const isDigit = (value: string) => /^[0-9]$/.test(value)
-const isNumberChar = (value: string) => isDigit(value) || value === '.'
 
 function tokenize(row: Row, diagnostics: ParseDiagnostic[]): Token[] {
   const tokens: Token[] = []
@@ -123,28 +124,27 @@ function tokenize(row: Row, diagnostics: ParseDiagnostic[]): Token[] {
       continue
     }
 
-    // A run of digits and decimal points is one number.
-    if (isNumberChar(atom.value)) {
-      let text = ''
-      const atomIds: string[] = []
+    // Digits and decimal points, perhaps with an exponent, are one number.
+    const number = numberAt(row, i)
+    if (number) {
+      const atomIds = row.slice(number.start, number.end).map((a) => a.id)
+      i = number.end
 
-      while (i < row.length) {
-        const next = row[i]
-        if (next.kind !== 'symbol' || !isNumberChar(next.value)) break
-        text += next.value
-        atomIds.push(next.id)
-        i++
+      // Number() accepts "1.", ".5" and "1e-08"; ".", "1.2.3" and "1e-0.5"
+      // are malformed, and "1e999" is too big for a double.
+      const value = Number(number.text)
+
+      if (!Number.isFinite(value)) {
+        const problem = Number.isNaN(value) ? 'Malformed number' : 'Number out of range'
+        diagnostics.push({ message: `${problem} "${number.text}"`, atomIds })
+        const fallback = Number.parseFloat(number.text)
+        tokens.push({ kind: 'number', value: Number.isFinite(fallback) ? fallback : 0, atomIds })
+      } else if (number.exponent !== null) {
+        const scientific = { mantissa: number.mantissa, exponent: Number(number.exponent) }
+        tokens.push({ kind: 'number', value, scientific, atomIds })
+      } else {
+        tokens.push({ kind: 'number', value, atomIds })
       }
-
-      // Number() accepts "1." and ".5"; "." alone or "1.2.3" are malformed.
-      let value = Number(text)
-
-      if (Number.isNaN(value)) {
-        diagnostics.push({ message: `Malformed number "${text}"`, atomIds })
-        value = Number.parseFloat(text) || 0
-      }
-
-      tokens.push({ kind: 'number', value, atomIds })
       continue
     }
 
@@ -306,7 +306,9 @@ class Parser {
 
     switch (token.kind) {
       case 'number':
-        return { type: 'Number', value: token.value }
+        return token.scientific
+          ? { type: 'Number', value: token.value, scientific: token.scientific }
+          : { type: 'Number', value: token.value }
       case 'identifier':
         return { type: 'Identifier', name: token.name }
       case 'function':

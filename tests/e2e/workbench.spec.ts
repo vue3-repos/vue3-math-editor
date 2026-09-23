@@ -193,3 +193,34 @@ test('stray input is reported, not lost', async () => {
   await wb.press('Backspace', 2)
   await expect(wb.page.locator('[data-role="diagnostics"]')).toHaveCount(0)
 })
+
+test.describe('scientific numbers', () => {
+  test('1e-08 is one number', async () => {
+    await wb.type('k=1e-08*V')
+    await wb.expectMathJson(['Equal', 'k', ['Multiply', 1e-8, 'V']])
+    await expect(wb.page.locator('[data-role="mathml"]')).toContainText(
+      '<cn type="e-notation">1<sep/>-8</cn>',
+    )
+  })
+
+  test('is drawn tight, without operator spacing around the exponent sign', async () => {
+    await wb.type('1e-08-x')
+    // Atoms: 1 e - 0 8 - x. The exponent's minus sits close to the e; the
+    // subtraction has operator spacing.
+    const e = await wb.glyphBox(0, 'r', 1)
+    const sign = await wb.glyphBox(0, 'r', 2)
+    const eight = await wb.glyphBox(0, 'r', 4)
+    const minus = await wb.glyphBox(0, 'r', 5)
+    expect(sign.left - e.right).toBeLessThan(2)
+    expect(minus.left - eight.right).toBeGreaterThan(3)
+  })
+
+  test('the cursor moves through it one character at a time', async () => {
+    await wb.type('1e-08')
+    await wb.press('Home')
+    for (let offset = 0; offset <= 5; offset++) {
+      await expect(wb.cursor()).toHaveText(`root @ ${offset}`)
+      await wb.press('ArrowRight')
+    }
+  })
+})

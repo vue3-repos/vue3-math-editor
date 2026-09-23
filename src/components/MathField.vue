@@ -39,7 +39,8 @@ import { type EditorState, deleteBackward, insertAtoms } from '../editor/command
 import { type Cursor, type PickOffset, cursorAtEnd, cursorAtStart } from '../editor/cursor'
 import { type EditInfo, OTHER_EDIT } from '../editor/history'
 import { commandForKey, typedText } from '../editor/keymap'
-import type { Row } from '../editor/layout'
+import { type Row, getRow } from '../editor/layout'
+import { isExponentSignPosition } from '../editor/numbers'
 import {
   collapseSelection,
   extendSelection,
@@ -308,7 +309,15 @@ function editInfo(event: KeyboardEvent, current: EditorState): EditInfo {
   const replacedSelection = selectionOf(current) !== null
   const text = typedText(event)
 
-  if (text !== null) return { kind: 'type', text, replacedSelection }
+  if (text !== null) {
+    const row = getRow(current.root, current.cursor.path)
+    const exponentSign =
+      !replacedSelection &&
+      (text === '-' || text === '+') &&
+      !!row &&
+      isExponentSignPosition(row, current.cursor.offset)
+    return { kind: 'type', text, replacedSelection, exponentSign }
+  }
   if (event.key === 'Backspace') return { kind: 'deleteBackward', replacedSelection }
   if (event.key === 'Delete') return { kind: 'deleteForward', replacedSelection }
   return OTHER_EDIT

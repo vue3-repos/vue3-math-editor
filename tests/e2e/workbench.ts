@@ -164,6 +164,35 @@ export class Workbench {
     )
   }
 
+  // The painted glyphs of the n-th atom in a row: like atomBox, but without
+  // the operator spacing KaTeX puts inside an atom's box.
+  async glyphBox(line: number, rowPath: string, n: number): Promise<Box> {
+    await this.line(line).scrollIntoViewIfNeeded()
+    return this.line(line).evaluate(
+      (field, [rowPath, n]) => {
+        const row = field.querySelector(`[data-row="${rowPath}"]`)
+        const atom = Array.from(row?.querySelectorAll('[data-atom]') ?? []).filter(
+          (el) => el.closest('[data-row]') === row,
+        )[n as number]
+        if (!atom) throw new Error(`No atom ${n} in ${rowPath}`)
+        const box = { left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity }
+        const visit = (el: Element) => {
+          if (['mspace', 'strut', 'pstrut'].some((c) => el.classList.contains(c))) return
+          if (el.children.length > 0) return Array.from(el.children).forEach(visit)
+          const rect = el.getBoundingClientRect()
+          if (rect.width === 0) return
+          box.left = Math.min(box.left, rect.left)
+          box.top = Math.min(box.top, rect.top)
+          box.right = Math.max(box.right, rect.right)
+          box.bottom = Math.max(box.bottom, rect.bottom)
+        }
+        visit(atom)
+        return box
+      },
+      [rowPath, n] as const,
+    )
+  }
+
   async rowBox(line: number, rowPath: string): Promise<Box> {
     await this.line(line).scrollIntoViewIfNeeded()
     return this.line(line).evaluate((field, rowPath) => {
