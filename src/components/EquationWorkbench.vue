@@ -43,7 +43,6 @@ import { type EditInfo, History, OTHER_EDIT, undoGroup } from '../editor/history
 import type { Row } from '../editor/layout'
 import { parseRow } from '../editor/parse'
 import { describeSelection, selectedAtoms, selectionOf } from '../editor/selection'
-import { astToLatex } from '../renderers/latex'
 import { renderMathJson } from '../renderers/mathjson'
 
 const props = withDefaults(defineProps<{ cellml?: boolean }>(), { cellml: false })
@@ -317,7 +316,8 @@ const parsed = computed(() => parsedLines.value[activeIndex.value] ?? null)
 
 const ast = computed(() => parsed.value?.ast ?? null)
 const diagnostics = computed(() => parsed.value?.diagnostics ?? [])
-const latex = computed(() => (ast.value ? astToLatex(ast.value) : ''))
+// The same LaTeX as copying and "Copy as LaTeX" produce.
+const latex = computed(() => (ast.value ? exportRow(active().root, 'latex') : ''))
 const mathjson = computed(() => (ast.value ? renderMathJson(ast.value) : ''))
 const mathml = computed(() => (ast.value ? contentMathML(active().root, exportOptions.value) : ''))
 const cursorLabel = computed(() => describeCursor(active().cursor))

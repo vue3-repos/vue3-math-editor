@@ -122,3 +122,17 @@ test('without CellML mode, Content MathML has no CellML markup', async () => {
   await expect(wb.page.locator('[data-role="mathml"]')).toContainText('<cn>2</cn>')
   await expect(wb.page.locator('[data-role="mathml"]')).not.toContainText('cellml')
 })
+
+test('the LaTeX panel shows the same LaTeX as copying', async () => {
+  const panel = wb.page.locator('[data-role="latex"]')
+  await expect(panel).toHaveText('')
+
+  await wb.type('Vm_init=2Vm*sin(t)')
+  await wb.press('End')
+  await wb.type('+1/x')
+  const expected = '\\mathit{Vm\\_init}=2\\mathit{Vm}\\cdot \\sin \\left(t\\right)+\\frac{1}{x}'
+  await expect(panel).toHaveText(expected)
+
+  await copyAs('LaTeX')
+  await expect.poll(readClipboard).toBe(expected)
+})

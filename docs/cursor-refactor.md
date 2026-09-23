@@ -252,8 +252,10 @@ Focus and the selection return to the equation afterwards, and the button briefl
 confirms the format copied.
 
 - **LaTeX** is the same readable LaTeX as Ctrl+C (`rowToLatexSource`), which pastes back
-  into the editor. This is not the text in the LaTeX output panel, which comes from the
-  AST renderer.
+  into the editor. The LaTeX output panel shows the same text for the whole equation.
+  (It used to come from a separate AST renderer, `renderers/latex.ts`, which wrote
+  names unescaped, so `Vm_init` read as a subscript, and products with `*`; that
+  renderer has been removed.)
 - **MathJSON** is the indented JSON shown in the MathJSON panel.
 - **Content MathML** is a complete document: the renderer's output wrapped in
   `<math xmlns="http://www.w3.org/1998/Math/MathML">` and re-indented by `formatXml`. The
@@ -336,7 +338,7 @@ equation. Nothing is built yet; these notes record how the editor should fit aro
 
 ## What was kept, replaced and removed
 
-**Kept:** `types/ast.ts`; `renderers/mathjson.ts`, `mathml.ts`, `latex.ts`; `registry/nodes.ts`
+**Kept:** `types/ast.ts`; `renderers/mathjson.ts`, `mathml.ts`; `registry/nodes.ts`
 (`FUNCTION_REGISTRY`; the unused `NODE_REGISTRY` was removed); the workbench's undo/redo,
 multi-line list, command mode, toolbar and output panels.
 
@@ -359,7 +361,6 @@ multi-line list, command mode, toolbar and output panels.
 ### Possible next steps
 
 - A keyboard shortcut for "copy as" (e.g. Ctrl+Shift+C for the last format used).
-- Make the LaTeX output panel show the same LaTeX as copying does.
 - Pasting several lines as several equations.
 - Showing a mark's message when the caret is on it, for keyboard users (the warning
   box lists them meanwhile).
