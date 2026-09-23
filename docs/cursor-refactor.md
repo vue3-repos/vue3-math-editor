@@ -1,6 +1,6 @@
 # Cursor refactor: design record
 
-_Recorded 2026-09-23. Status: accepted; implementation in progress on `refactor/cursor-model` (steps 1–4, selection and clipboard done)._
+_Recorded 2026-09-23. Status: accepted; implementation in progress on `refactor/cursor-model` (steps 1–4, selection, clipboard and "copy as" done)._
 
 ## Background
 
@@ -187,6 +187,27 @@ to a focused, non-editable `div`, so no hidden text area is needed.
     step).
 - `rowToLatexSource` and `latexToRow` round-trip every atom kind (unit-tested).
 
+### Copy as LaTeX / MathJSON / Content MathML
+
+A "Copy as" button in the workbench toolbar opens a menu (PrimeVue `Menu`) with the three
+formats from `editor/exports.ts`. It copies the selection if there is one (the button
+then reads "Copy selection as"), otherwise the whole active equation. A selection is
+exported on its own: its atoms are parsed as a row of their own, so selecting `a+b` in
+`y=a+b` gives `["Add","a","b"]`, and an incomplete selection (`+b`) gets placeholders.
+Focus and the selection return to the equation afterwards, and the button briefly
+confirms the format copied.
+
+- **LaTeX** is the same readable LaTeX as Ctrl+C (`rowToLatexSource`), which pastes back
+  into the editor. This is not the text in the LaTeX output panel, which comes from the
+  AST renderer.
+- **MathJSON** is the indented JSON shown in the MathJSON panel.
+- **Content MathML** is a complete document: the renderer's output wrapped in
+  `<math xmlns="http://www.w3.org/1998/Math/MathML">` and re-indented by `formatXml`. The
+  Content MathML panel now shows the same document.
+
+Copy as uses the async clipboard API (`text/plain` only), falling back to
+`document.execCommand('copy')` where that isn't available.
+
 ### Testing
 
 - **Unit tests** (Vitest, `npm test`): `tests/*.spec.ts`. Pure model code (cursor
@@ -228,7 +249,8 @@ multi-line list, command mode, toolbar and output panels.
 
 ### Possible next steps
 
-- Copy as MathJSON or MathML too (e.g. `text/html` or an explicit "copy as" menu).
+- A keyboard shortcut for "copy as" (e.g. Ctrl+Shift+C for the last format used).
+- Make the LaTeX output panel show the same LaTeX as copying does.
 - Pasting several lines as several equations.
 - Subscripts (`_`), if needed for variable names like x₁.
 - Marking parser diagnostics on the offending atom (each diagnostic carries its

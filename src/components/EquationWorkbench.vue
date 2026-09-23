@@ -12,6 +12,7 @@ import katex from 'katex'
 import Button from 'primevue/button'
 import Card from 'primevue/card'
 import Divider from 'primevue/divider'
+import Menu from 'primevue/menu'
 import Tag from 'primevue/tag'
 
 import MathField, { type NavigationState } from './MathField.vue'
@@ -30,11 +31,11 @@ import {
   namedCommand,
 } from '../editor/commands'
 import { cursorAtEnd, describeCursor } from '../editor/cursor'
+import { EXPORT_FORMATS, type ExportFormat, contentMathML, exportRow } from '../editor/exports'
 import { parseRow } from '../editor/parse'
-import { describeSelection, selectionOf } from '../editor/selection'
+import { describeSelection, selectedAtoms, selectionOf } from '../editor/selection'
 import { astToLatex } from '../renderers/latex'
 import { renderMathJson } from '../renderers/mathjson'
-import { astToContentMathML } from '../renderers/mathml'
 
 const equations = ref<EditorState[]>([emptyState()])
 const activeIndex = ref(0)
@@ -290,7 +291,7 @@ const ast = computed(() => parsed.value?.ast ?? null)
 const diagnostics = computed(() => parsed.value?.diagnostics ?? [])
 const latex = computed(() => (ast.value ? astToLatex(ast.value) : ''))
 const mathjson = computed(() => (ast.value ? renderMathJson(ast.value) : ''))
-const mathml = computed(() => (ast.value ? astToContentMathML(ast.value).trim() : ''))
+const mathml = computed(() => (ast.value ? contentMathML(active().root) : ''))
 const cursorLabel = computed(() => describeCursor(active().cursor))
 const selectionLabel = computed(() => {
   const selection = selectionOf(active())
@@ -317,23 +318,72 @@ function fallbackCopyText(text: string): boolean {
   }
 }
 
+async function writeClipboard(text: string): Promise<void> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text)
+      return
+    }
+  } catch {
+    // Permission refused or not a secure context: fall back below.
+  }
+
+  fallbackCopyText(text)
+}
+
 async function copyMathJson() {
   if (!mathjson.value) return
 
   isCopyingMathJson.value = true
 
   try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(mathjson.value)
-      return
-    }
-
-    fallbackCopyText(mathjson.value)
+    await writeClipboard(mathjson.value)
   } finally {
     window.setTimeout(() => {
       isCopyingMathJson.value = false
     }, 1200)
   }
+}
+
+// ---------------------------------------------------------------------------
+// Copy as LaTeX / MathJSON / Content MathML (toolbar menu)
+// ---------------------------------------------------------------------------
+
+const copyMenu = ref<InstanceType<typeof Menu> | null>(null)
+// The format just copied, shown on the button for a moment.
+const copiedFormat = ref<string | null>(null)
+let copiedTimer: number | undefined
+
+const hasSelection = computed(() => selectionOf(active()) !== null)
+const canCopyAs = computed(() => active().root.length > 0)
+
+const copyAsLabel = computed(() => {
+  if (copiedFormat.value) return `Copied ${copiedFormat.value}`
+  return hasSelection.value ? 'Copy selection as' : 'Copy as'
+})
+
+// The selection if there is one, otherwise the whole active equation.
+async function copyAs(format: ExportFormat, label: string) {
+  const state = active()
+  const atoms = selectionOf(state) ? selectedAtoms(state) : state.root
+
+  if (atoms.length > 0) {
+    await writeClipboard(exportRow(atoms, format))
+    copiedFormat.value = label
+    window.clearTimeout(copiedTimer)
+    copiedTimer = window.setTimeout(() => (copiedFormat.value = null), 1500)
+  }
+
+  focusActive()
+}
+
+const copyAsItems = EXPORT_FORMATS.map(({ format, label }) => ({
+  label,
+  command: () => copyAs(format, label),
+}))
+
+function toggleCopyMenu(event: Event) {
+  copyMenu.value?.toggle(event)
 }
 </script>
 
@@ -419,6 +469,23 @@ async function copyMathJson() {
               @mousedown.prevent
               @click="removeActiveLine"
             />
+          </div>
+
+          <div class="toolbar-group">
+            <Button
+              icon="pi pi-copy"
+              :label="copyAsLabel"
+              size="small"
+              text
+              title="Copy the selection, or the whole equation, as LaTeX, MathJSON or Content MathML"
+              aria-haspopup="true"
+              aria-controls="copy-as-menu"
+              data-role="copy-as"
+              :disabled="!canCopyAs"
+              @mousedown.prevent
+              @click="toggleCopyMenu"
+            />
+            <Menu id="copy-as-menu" ref="copyMenu" :model="copyAsItems" :popup="true" />
           </div>
         </div>
 
