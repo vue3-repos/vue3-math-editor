@@ -45,7 +45,7 @@ export function cursorsEqual(a: Cursor, b: Cursor): boolean {
 }
 
 // Human-readable form of a cursor, e.g. "0.num › 0.den @ 1" (shown in the
-// workbench and playground, and asserted on by the e2e tests).
+// workbench, and asserted on by the e2e tests).
 export function describeCursor(cursor: Cursor): string {
   const path = cursor.path.map((s) => `${s.atom}.${s.branch}`).join(' › ')
   return `${path || 'root'} @ ${cursor.offset}`

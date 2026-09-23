@@ -39,7 +39,7 @@ export default defineConfig({
 
   webServer: {
     command: `npx vite --port ${port} --strictPort`,
-    url: `http://localhost:${port}/playground.html`,
+    url: `http://localhost:${port}/`,
     reuseExistingServer: !process.env.CI,
   },
 })

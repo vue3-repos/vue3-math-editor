@@ -105,10 +105,11 @@ the UI can mark them.
   active placeholder is highlighted and blinks instead.
 - A click goes to the innermost row whose painted box contains the point, at the gap
   nearest the click's x. ↑/↓ go to the gap nearest the caret's current x.
-- `components/MathField.vue` handles only navigation (arrow keys, Home/End, click) and
-  emits `update:cursor`. Other keys bubble up to the parent for step 4.
-- The development page is `playground.html` (under `npm run dev`, open
-  `/playground.html`). It is not part of the production build.
+- `components/MathField.vue` handles navigation (arrow keys, Home/End, click) and, since
+  step 4, typing; it emits `update:cursor` and `edit`.
+- Steps 3–4 used a development page (`playground.html`, `src/dev/`) to exercise the
+  field on its own. It was removed once the browser tests could drive the workbench
+  directly.
 
 ### Editing behaviour (step 4)
 
@@ -137,12 +138,14 @@ line (remove it); Ctrl/Cmd+Z and Shift+Z / Y (undo/redo, one step per edit).
 
 - **Unit tests** (Vitest, `npm test`): `tests/*.spec.ts`. Pure model code (cursor
   movement, parser, LaTeX generation), including randomised property tests.
-- **Browser tests** (Playwright, `npm run test:e2e`): `tests/e2e/`. These drive
-  `playground.html` in Chromium, because caret placement and click hit-testing depend
-  on real KaTeX layout, which jsdom doesn't do. The expected cursor positions are
-  computed from the same sample trees the page renders (`src/dev/samples.ts`), and
-  assertions read the cursor and MathJSON the playground prints, not pixels. The
-  config starts the Vite dev server itself.
+- **Browser tests** (Playwright, `npm run test:e2e`): `tests/e2e/`. These drive the
+  workbench in Chromium, because caret placement and click hit-testing depend on real
+  KaTeX layout, which jsdom doesn't do. `tests/e2e/samples.ts` defines each sample
+  equation as the keys that type it plus the layout tree it must produce. Every test
+  that uses a sample first checks the typed result matches that tree (same rows, same
+  atom counts, same MathJSON), then computes the expected cursor positions from it.
+  Assertions read the cursor and MathJSON the workbench prints, not pixels. The config
+  starts the Vite dev server itself.
 - **Screenshot tests** are opt-in (`npm run test:e2e:visual`, tagged `@visual`),
   because font rendering differs by OS. Baselines are per platform; create or refresh
   them with `npm run test:e2e:visual -- --update-snapshots`.

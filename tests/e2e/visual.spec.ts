@@ -6,24 +6,39 @@
 
 import { expect, test } from '@playwright/test'
 
-import { Playground } from './playground'
+import { SAMPLES } from './samples'
+import { Workbench } from './workbench'
 
-test.use({ viewport: { width: 900, height: 1300 } })
+test.use({ viewport: { width: 1200, height: 1400 } })
 
-test('playground layout @visual', async ({ page }) => {
-  const pg = new Playground(page)
-  await pg.goto()
-  await expect(page.locator('main')).toHaveScreenshot('playground.png', { animations: 'disabled' })
+test('every sample, one per line @visual', async ({ page }) => {
+  const wb = new Workbench(page)
+  await wb.goto()
+  await wb.focusLine(0)
+
+  for (const [index, { id }] of SAMPLES.entries()) {
+    if (index > 0) {
+      await wb.press('End')
+      await wb.press('Enter')
+    }
+    await wb.enterSample(id, index)
+  }
+
+  await wb.blur() // no caret or focus ring in the picture
+  await expect(page.locator('.equations-stack')).toHaveScreenshot('samples.png', {
+    animations: 'disabled',
+  })
 })
 
 test('caret beside a fraction @visual', async ({ page }) => {
-  const pg = new Playground(page)
-  await pg.goto()
-  await pg.focus('fraction-sum')
-  await pg.press('End')
-  await pg.press('ArrowLeft', 2) // just after the fraction
-  await pg.settle()
-  await expect(pg.field('fraction-sum')).toHaveScreenshot('caret-after-fraction.png', {
+  const wb = new Workbench(page)
+  await wb.goto()
+  await wb.focusLine(0)
+  await wb.enterSample('fraction-sum')
+  await wb.press('End')
+  await wb.press('ArrowLeft', 2) // just after the fraction
+  await wb.settle()
+  await expect(wb.line(0)).toHaveScreenshot('caret-after-fraction.png', {
     animations: 'disabled',
   })
 })
