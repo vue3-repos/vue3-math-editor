@@ -23,14 +23,20 @@ export interface KeyLike {
 
 const SYMBOL_KEYS = /^[A-Za-z0-9_.+\-=,]$/
 
+// The character a key types into the equation, if it types one: "*" is
+// shown as "·".
+export function typedText(event: KeyLike): string | null {
+  if (SYMBOL_KEYS.test(event.key)) return event.key
+  return event.key === '*' ? '·' : null
+}
+
 export function commandForKey(event: KeyLike): Command | null {
   const { key } = event
 
-  if (SYMBOL_KEYS.test(key)) return insertSymbol(key)
+  const text = typedText(event)
+  if (text !== null) return insertSymbol(text)
 
   switch (key) {
-    case '*':
-      return insertSymbol('·')
     case '/':
       return insertFraction
     case '^':

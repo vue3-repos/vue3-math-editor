@@ -132,16 +132,6 @@ test.describe('commands', () => {
   })
 })
 
-test.describe('undo and redo', () => {
-  test('undo and redo each edit', async () => {
-    await wb.type('ab')
-    await wb.press('ControlOrMeta+z')
-    await wb.expectMathJson('a')
-    await wb.press('ControlOrMeta+Shift+z')
-    await wb.expectMathJson('ab')
-  })
-})
-
 test.describe('lines', () => {
   test('Enter adds a line, ↑/↓ move between lines, Backspace removes an empty one', async () => {
     await wb.type('x=1')

@@ -165,7 +165,27 @@ the same object. `editor/keymap.ts` maps keys to them, and `MathField` runs them
 
 Handled by the workbench, from keys `MathField` leaves unused: Enter (new line); ↑/↓
 with no row above/below, and Alt+↑/↓ (previous/next line); Backspace in an empty
-line (remove it); Ctrl/Cmd+Z and Shift+Z / Y (undo/redo, one step per edit).
+line (remove it); Ctrl/Cmd+Z and Shift+Z / Y (undo/redo; see below).
+
+### Undo steps
+
+Consecutive typing is one undo step, as in a text editor. The history lives in
+`editor/history.ts` (pure, unit-tested); `MathField` reports what kind of edit each key
+made (`EditInfo`: typed a character, Backspace, Delete, or other), and the workbench
+turns that into an undo group with `undoGroup` before recording the state.
+
+- **Typed characters on one line join one step.** An operator (`+ - = · ,`) starts a
+  new step, playing the part of the space between words, so undoing `x+1=2` gives
+  `x+1`, then `x`, then nothing.
+- **Repeated Backspace (or Delete) presses join one step**, separate from typing.
+- **A new step starts** after moving the cursor, clicking or changing the selection,
+  switching lines, undo or redo, or a pause of more than a second.
+- **Always a step of their own:** structures (`/ ^ ( ) |`), paste and cut, toolbar
+  buttons and `\` commands, deleting a selection, and adding or removing a line.
+  Typing over a selection starts a new step that the following characters join.
+- **Cursor-only commands are not undo steps.** Space (step out of a structure) and
+  Tab (next slot) change only the cursor, so the workbench treats them as navigation.
+- Each step restores the state before its first edit, cursor and selection included.
 
 ### Selection
 
@@ -332,4 +352,3 @@ multi-line list, command mode, toolbar and output panels.
 - Pasting several lines as several equations.
 - Showing a mark's message when the caret is on it, for keyboard users (the warning
   box lists them meanwhile).
-- Coalescing consecutive typing into one undo step.

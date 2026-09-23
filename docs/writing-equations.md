@@ -219,10 +219,16 @@ equation is still understood.
 | Backspace | Delete the thing before the caret. Next to a fraction or other structure, the first press steps inside it rather than deleting everything; an empty structure goes in one press. At the start of a structure's first slot, it removes the structure but keeps its contents; in a later slot, it moves back to the end of the previous one. |
 | Delete | The same, forwards |
 | Enter | Start a new equation line |
-| Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z | Undo, redo |
+| Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z (or Ctrl/Cmd+Y) | Undo, redo |
 
 Names are edited one character at a time: you can click or arrow into the middle of
 `Vm_init` and type, and the name changes accordingly.
+
+Undo works in steps, like a text editor. Characters typed one after another are one
+step, and each operator you type starts a new one, so undoing `x+1=2` gives `x+1`,
+then `x`. A run of Backspaces is one step. Moving the caret, or pausing for more than
+a second, also starts a new step. Fractions, exponents, brackets, pastes and toolbar
+buttons are each a step of their own.
 
 ## Selecting and wrapping
 

@@ -4,10 +4,11 @@
 //
 // State is one EditorState ({ root, cursor }) per line. MathField runs the
 // per-key editing commands and emits the new state; the workbench records
-// undo history and handles what spans lines (Enter, ↑/↓ between lines,
-// removing an empty line) and command mode. The semantic AST shown in the
-// output panels is parsed from the active line's layout tree.
-import { computed, nextTick, ref } from 'vue'
+// undo history (editor/history.ts: consecutive typing is one step) and
+// handles what spans lines (Enter, ↑/↓ between lines, removing an empty
+// line) and command mode. The semantic AST shown in the output panels is
+// parsed from the active line's layout tree.
+import { computed, nextTick, ref, toRaw } from 'vue'
 import katex from 'katex'
 import Button from 'primevue/button'
 import Card from 'primevue/card'
@@ -32,6 +33,7 @@ import {
 } from '../editor/commands'
 import { cursorAtEnd, describeCursor } from '../editor/cursor'
 import { EXPORT_FORMATS, type ExportFormat, contentMathML, exportRow } from '../editor/exports'
+import { type EditInfo, History, OTHER_EDIT, undoGroup } from '../editor/history'
 import type { Row } from '../editor/layout'
 import { parseRow } from '../editor/parse'
 import { describeSelection, selectedAtoms, selectionOf } from '../editor/selection'
@@ -66,8 +68,9 @@ interface Snapshot {
   active: number
 }
 
-const undoStack = ref<Snapshot[]>([])
-const redoStack = ref<Snapshot[]>([])
+const history = new History<Snapshot>()
+// History isn't reactive; bumped whenever it changes, for canUndo/canRedo.
+const historyVersion = ref(0)
 
 function takeSnapshot(): Snapshot {
   return JSON.parse(
@@ -75,46 +78,46 @@ function takeSnapshot(): Snapshot {
   ) as Snapshot
 }
 
-function pushHistory() {
-  undoStack.value.push(takeSnapshot())
-  if (undoStack.value.length > 200) undoStack.value.shift()
-  redoStack.value = []
+// Record the state before an edit to line `line` (default: a step of its own).
+function pushHistory(line = activeIndex.value, info: EditInfo = OTHER_EDIT) {
+  history.checkpoint(takeSnapshot, undoGroup(line, info))
+  historyVersion.value++
 }
 
-function restore(snapshot: Snapshot) {
+function restore(snapshot: Snapshot | null) {
+  if (!snapshot) return
   equations.value = snapshot.equations
   activeIndex.value = Math.min(snapshot.active, snapshot.equations.length - 1)
+  historyVersion.value++
   focusActive()
 }
 
-function undo() {
-  const snapshot = undoStack.value.pop()
-  if (!snapshot) return
-  redoStack.value.push(takeSnapshot())
-  restore(snapshot)
-}
+const undo = () => restore(history.undo(takeSnapshot()))
+const redo = () => restore(history.redo(takeSnapshot()))
 
-function redo() {
-  const snapshot = redoStack.value.pop()
-  if (!snapshot) return
-  undoStack.value.push(takeSnapshot())
-  restore(snapshot)
-}
-
-const canUndo = computed(() => undoStack.value.length > 0)
-const canRedo = computed(() => redoStack.value.length > 0)
+const canUndo = computed(() => historyVersion.value >= 0 && history.canUndo)
+const canRedo = computed(() => historyVersion.value >= 0 && history.canRedo)
 
 // ---------------------------------------------------------------------------
 // Editing
 // ---------------------------------------------------------------------------
 
-function handleEdit(index: number, next: EditorState) {
-  pushHistory()
+function handleEdit(index: number, next: EditorState, info: EditInfo) {
+  // A command that only moved the cursor (Space out of a fraction, Tab to
+  // the next slot) is navigation, not an undo step.
+  if (toRaw(next.root) === toRaw(equations.value[index].root)) {
+    handleNavigate(index, { cursor: next.cursor, anchor: next.anchor ?? null })
+    return
+  }
+
+  pushHistory(index, info)
   setEquation(index, next)
 }
 
-// Cursor moves and selection changes: not recorded in undo history.
+// Cursor moves and selection changes: not recorded in undo history, but the
+// next edit starts a new undo step.
 function handleNavigate(index: number, { cursor, anchor }: NavigationState) {
+  history.breakGroup()
   setEquation(index, { ...equations.value[index], cursor, anchor })
 }
 
@@ -145,6 +148,7 @@ function addLineAfterActive() {
 
 function moveToLine(index: number) {
   if (index < 0 || index >= equations.value.length) return
+  history.breakGroup()
   activeIndex.value = index
   focusActive()
 }
@@ -525,7 +529,7 @@ function toggleCopyMenu(event: Event) {
               :active="index === activeIndex"
               :marks="parsedLines[index]?.diagnostics ?? NO_MARKS"
               @navigate="handleNavigate(index, $event)"
-              @edit="handleEdit(index, $event)"
+              @edit="(state, info) => handleEdit(index, state, info)"
             />
           </div>
         </div>

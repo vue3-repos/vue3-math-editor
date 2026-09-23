@@ -4,8 +4,9 @@
 // the mouse, and runs editing commands for typed keys (editor/keymap.ts).
 //
 // It owns no state. Navigation and selection emit `navigate` with the new
-// { cursor, anchor }; edits emit `edit` with the new { root, cursor } (so the
-// parent can record undo history). Keys it doesn't use bubble up: Enter,
+// { cursor, anchor }; edits emit `edit` with the new { root, cursor } and what
+// kind of edit it was (so the parent can record undo history, grouping
+// consecutive typing; see editor/history.ts). Keys it doesn't use bubble up: Enter,
 // Ctrl/Cmd/Alt shortcuts other than select-all, ↑/↓ with no row above/below,
 // and Backspace/Delete/Tab when they have nothing to do here (e.g. Backspace
 // in an empty equation).
@@ -36,7 +37,8 @@ import {
 } from '../editor/clipboard'
 import { type EditorState, deleteBackward, insertAtoms } from '../editor/commands'
 import { type Cursor, type PickOffset, cursorAtEnd, cursorAtStart } from '../editor/cursor'
-import { commandForKey } from '../editor/keymap'
+import { type EditInfo, OTHER_EDIT } from '../editor/history'
+import { commandForKey, typedText } from '../editor/keymap'
 import type { Row } from '../editor/layout'
 import {
   collapseSelection,
@@ -77,7 +79,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   navigate: [state: NavigationState]
-  edit: [state: EditorState]
+  edit: [state: EditorState, info: EditInfo]
 }>()
 
 const surfaceEl = ref<HTMLElement | null>(null)
@@ -299,7 +301,17 @@ function handleEditKey(event: KeyboardEvent, current: EditorState) {
   }
 
   event.preventDefault()
-  emit('edit', next)
+  emit('edit', next, editInfo(event, current))
+}
+
+function editInfo(event: KeyboardEvent, current: EditorState): EditInfo {
+  const replacedSelection = selectionOf(current) !== null
+  const text = typedText(event)
+
+  if (text !== null) return { kind: 'type', text, replacedSelection }
+  if (event.key === 'Backspace') return { kind: 'deleteBackward', replacedSelection }
+  if (event.key === 'Delete') return { kind: 'deleteForward', replacedSelection }
+  return OTHER_EDIT
 }
 
 // ---------------------------------------------------------------------------
@@ -369,7 +381,7 @@ function handleCopy(event: ClipboardEvent) {
 
 function handleCut(event: ClipboardEvent) {
   if (!hasFocus() || props.readonly) return
-  if (copySelection(event)) emit('edit', deleteBackward(state()))
+  if (copySelection(event)) emit('edit', deleteBackward(state()), OTHER_EDIT)
 }
 
 function handlePaste(event: ClipboardEvent) {
@@ -380,7 +392,7 @@ function handlePaste(event: ClipboardEvent) {
   const atoms =
     deserializeAtoms(data.getData(CLIPBOARD_MIME)) ?? latexToRow(data.getData('text/plain'))
 
-  if (atoms.length > 0) emit('edit', insertAtoms(atoms)(state()))
+  if (atoms.length > 0) emit('edit', insertAtoms(atoms)(state()), OTHER_EDIT)
 }
 
 defineExpose({ focus: () => surfaceEl.value?.focus() })
