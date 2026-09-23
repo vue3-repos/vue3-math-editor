@@ -94,3 +94,50 @@ test('the rows are laid out as cases: values left of conditions, pieces stacked'
   expect(otherwise.top).toBeGreaterThan(value.bottom - 2)
   expect(Math.abs(otherwise.left - value.left)).toBeLessThan(2)
 })
+
+test.describe('editing pieces', () => {
+  test('Enter adds a piece; Enter outside a piecewise still adds a line', async () => {
+    await wb.enterSample('piecewise')
+    await wb.press('Enter')
+    await expect(wb.cursor()).toHaveText('2.value1 @ 0')
+    await wb.type('b')
+    await wb.press('ArrowRight')
+    await wb.type('t>=1')
+    await wb.expectMathJson([
+      'Equal',
+      'y',
+      ['Which', ['Less', 't', 1], 'a', ['GreaterEqual', 't', 1], 'b', 'True', 0],
+    ])
+    await expect(wb.lines()).toHaveCount(1)
+
+    await wb.press('End')
+    await wb.press('Enter')
+    await expect(wb.lines()).toHaveCount(2)
+  })
+
+  test('Backspace in an empty piece removes it', async () => {
+    await wb.enterSample('piecewise')
+    await wb.press('Enter')
+    await wb.press('Backspace')
+    await expect(wb.cursor()).toHaveText('2.cond0 @ 3')
+    await wb.expectMathJson(['Equal', 'y', ['Which', ['Less', 't', 1], 'a', 'True', 0]])
+  })
+
+  test('adding a piece is one undo step', async () => {
+    await wb.enterSample('piecewise')
+    await wb.press('Enter')
+    await wb.type('b')
+    await wb.press('ControlOrMeta+z')
+    await wb.press('ControlOrMeta+z')
+    await wb.expectMathJson(['Equal', 'y', ['Which', ['Less', 't', 1], 'a', 'True', 0]])
+  })
+})
+
+test('the outputs show the piecewise', async () => {
+  await wb.enterSample('piecewise')
+  await expect(wb.page.locator('[data-role="mathml"]')).toContainText('<piecewise>')
+  await expect(wb.page.locator('[data-role="mathml"]')).toContainText('<otherwise>')
+  await expect(wb.page.locator('[data-role="latex"]')).toHaveText(
+    'y=\\begin{cases}a & t<1 \\\\ 0.0 & \\text{otherwise}\\end{cases}',
+  )
+})

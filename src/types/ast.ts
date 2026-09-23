@@ -12,6 +12,7 @@ export type AstNode =
   | ComparisonNode
   | LogicNode
   | NotNode
+  | PiecewiseNode
   | DivideNode
   | PowerNode
   | DerivativeNode
@@ -97,6 +98,13 @@ export interface LogicNode {
 export interface NotNode {
   type: 'Not'
   value: AstNode
+}
+
+// { value₀ if condition₀; …; otherwise }
+export interface PiecewiseNode {
+  type: 'Piecewise'
+  pieces: Array<{ value: AstNode; condition: AstNode }>
+  otherwise: AstNode | null
 }
 
 export interface DivideNode {

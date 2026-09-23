@@ -18,6 +18,7 @@ import {
   type Atom,
   type BranchName,
   type GroupDelimiter,
+  type PiecewiseAtom,
   type Row,
   type RowPath,
   childRows,
@@ -28,6 +29,7 @@ import {
   getRow,
   group,
   piecewise,
+  piecewiseBranch,
   root,
   row,
   setChildRow,
@@ -137,6 +139,131 @@ function unwrap(state: EditorState, owner: Owner, cursorOffset: number): EditorS
     path: owner.rowPath,
     offset: owner.index + cursorOffset,
   })
+}
+
+// ---------------------------------------------------------------------------
+// Piecewise pieces
+// ---------------------------------------------------------------------------
+
+interface PiecewiseOwner extends Owner {
+  atom: PiecewiseAtom
+}
+
+// The innermost piecewise the cursor is inside, at any depth (the cursor may
+// be in a fraction inside a condition).
+function enclosingPiecewise(state: EditorState): PiecewiseOwner | null {
+  for (let depth = state.cursor.path.length; depth > 0; depth--) {
+    const owner = ownerOf(state, depth)
+    if (owner?.atom.kind === 'piecewise') return owner as PiecewiseOwner
+  }
+  return null
+}
+
+const branchPath = (owner: Owner, branch: BranchName): RowPath => [
+  ...owner.rowPath,
+  { atom: owner.index, branch },
+]
+
+const isEmptyPiece = (piece: { value: Row; condition: Row }) =>
+  piece.value.length === 0 && piece.condition.length === 0
+
+// Enter inside a piecewise: a new, empty piece below the current one (from
+// otherwise, the new piece goes last, just above it), with the cursor in its
+// value. Outside a piecewise, nothing (Enter then adds an equation line).
+export const newPiece: Command = (state) => {
+  const owner = enclosingPiecewise(state)
+  if (!owner) return state
+
+  const where = piecewiseBranch(owner.branch)!
+  const { pieces } = owner.atom
+  const at = where.part === 'otherwise' ? pieces.length : where.piece + 1
+  const atom: PiecewiseAtom = {
+    ...owner.atom,
+    pieces: [...pieces.slice(0, at), { value: [], condition: [] }, ...pieces.slice(at)],
+  }
+
+  return splice(state, owner.rowPath, owner.index, 1, [atom], {
+    path: branchPath(owner, `value${at}`),
+    offset: 0,
+  })
+}
+
+// \otherwise: give the enclosing piecewise an otherwise (0.0, selected so
+// typing replaces it), or move to the one it has.
+export const addOtherwise: Command = (state) => {
+  const owner = enclosingPiecewise(state)
+  if (!owner) return state
+
+  const path = branchPath(owner, 'otherwise')
+
+  if (owner.atom.otherwise) {
+    return { root: state.root, cursor: { path, offset: owner.atom.otherwise.length } }
+  }
+
+  const otherwise = row('0.0')
+  const next = splice(state, owner.rowPath, owner.index, 1, [{ ...owner.atom, otherwise }], {
+    path,
+    offset: otherwise.length,
+  })
+  return { ...next, anchor: { path, offset: 0 } }
+}
+
+// Backspace at the start of a row of a piecewise, for the cases that remove a
+// piece: in an empty piece (not the only one), remove it and go to the end
+// of the piece above; in an empty otherwise, remove it. Null otherwise.
+function deletePieceBackward(state: EditorState, owner: PiecewiseOwner): EditorState | null {
+  const where = piecewiseBranch(owner.branch)!
+  const { pieces, otherwise } = owner.atom
+
+  if (where.part === 'otherwise') {
+    if (!otherwise || otherwise.length > 0) return null
+    const last = pieces.length - 1
+    return splice(state, owner.rowPath, owner.index, 1, [{ ...owner.atom, otherwise: null }], {
+      path: branchPath(owner, `cond${last}`),
+      offset: pieces[last].condition.length,
+    })
+  }
+
+  if (where.part !== 'value' || pieces.length < 2 || !isEmptyPiece(pieces[where.piece])) {
+    return null
+  }
+
+  const atom = { ...owner.atom, pieces: pieces.filter((_, i) => i !== where.piece) }
+  const cursor =
+    where.piece > 0
+      ? {
+          path: branchPath(owner, `cond${where.piece - 1}`),
+          offset: pieces[where.piece - 1].condition.length,
+        }
+      : { path: branchPath(owner, 'value0'), offset: 0 }
+  return splice(state, owner.rowPath, owner.index, 1, [atom], cursor)
+}
+
+// Delete at the end of a row of a piecewise: the mirror image. In an empty
+// piece (not the only one), remove it and go to the start of what followed;
+// in an empty otherwise, remove it and step out after the piecewise.
+function deletePieceForward(state: EditorState, owner: PiecewiseOwner): EditorState | null {
+  const where = piecewiseBranch(owner.branch)!
+  const { pieces, otherwise } = owner.atom
+
+  if (where.part === 'otherwise') {
+    if (!otherwise || otherwise.length > 0) return null
+    return splice(state, owner.rowPath, owner.index, 1, [{ ...owner.atom, otherwise: null }], {
+      path: owner.rowPath,
+      offset: owner.index + 1,
+    })
+  }
+
+  if (pieces.length < 2 || !isEmptyPiece(pieces[where.piece])) return null
+
+  const atom = { ...owner.atom, pieces: pieces.filter((_, i) => i !== where.piece) }
+  const cursor =
+    where.piece < atom.pieces.length
+      ? { path: branchPath(owner, `value${where.piece}`), offset: 0 }
+      : atom.otherwise
+        ? { path: branchPath(owner, 'otherwise'), offset: 0 }
+        : { path: owner.rowPath, offset: owner.index + 1 }
+  return splice(state, owner.rowPath, owner.index, 1, [atom], cursor)
 }
 
 // ---------------------------------------------------------------------------
@@ -454,6 +581,11 @@ export const deleteBackward: Command = (state) => {
   const owner = ownerOf(state)
   if (!owner) return state
 
+  if (owner.atom.kind === 'piecewise') {
+    const removed = deletePieceBackward(state, owner as PiecewiseOwner)
+    if (removed) return removed
+  }
+
   if (isEmptyStructure(owner.atom)) {
     return splice(state, owner.rowPath, owner.index, 1, [], {
       path: owner.rowPath,
@@ -502,6 +634,11 @@ export const deleteForward: Command = (state) => {
 
   const owner = ownerOf(state)
   if (!owner) return state
+
+  if (owner.atom.kind === 'piecewise') {
+    const removed = deletePieceForward(state, owner as PiecewiseOwner)
+    if (removed) return removed
+  }
 
   if (isEmptyStructure(owner.atom)) {
     return splice(state, owner.rowPath, owner.index, 1, [], {
@@ -617,6 +754,8 @@ export function namedCommand(name: string): Command {
     case 'cases':
     case 'piecewise':
       return insertPiecewise
+    case 'otherwise':
+      return addOtherwise
   }
 
   const operator = conditionOperatorForCommand(name)

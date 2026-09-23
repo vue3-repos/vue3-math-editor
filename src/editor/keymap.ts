@@ -1,6 +1,6 @@
 // Which editing command a key press runs. Navigation keys (arrows,
-// Home/End) are handled by MathField directly; undo/redo, Enter (new line)
-// and "\" command mode by the workbench.
+// Home/End) are handled by MathField directly; undo/redo, Enter (new line,
+// when not in a piecewise) and "\" command mode by the workbench.
 
 import {
   type Command,
@@ -12,6 +12,7 @@ import {
   insertFraction,
   insertSuperscript,
   insertSymbol,
+  newPiece,
   nextPlaceholder,
   openParen,
   typeEquals,
@@ -59,6 +60,9 @@ export function commandForKey(event: KeyLike): Command | null {
       return deleteForward
     case 'Tab':
       return nextPlaceholder(event.shiftKey ? 'backward' : 'forward')
+    case 'Enter':
+      // A new piece inside a piecewise; otherwise unused (a new line).
+      return event.shiftKey ? null : newPiece
     default:
       return null
   }

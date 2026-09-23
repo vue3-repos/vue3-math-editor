@@ -154,6 +154,16 @@ export function astToContentMathML(node: AstNode, options: ContentMathMLOptions 
     case 'Not':
       return renderApply('not', [astToContentMathML(node.value, options)])
 
+    // Not an <apply>: <piecewise> is its own element.
+    case 'Piecewise': {
+      const render = (child: AstNode) => astToContentMathML(child, options)
+      const pieces = node.pieces.map(
+        ({ value, condition }) => `<piece>${render(value)}${render(condition)}</piece>`,
+      )
+      const otherwise = node.otherwise ? `<otherwise>${render(node.otherwise)}</otherwise>` : ''
+      return `<piecewise>${pieces.join('')}${otherwise}</piecewise>`
+    }
+
     case 'Power':
       return renderApply('power', [
         astToContentMathML(node.base, options),

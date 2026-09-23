@@ -173,7 +173,7 @@ read.
 - **Rendering:** comparisons as relations (`\mathrel`), ∧ ∨ ⊻ as binary operators, ¬ as
   an ordinary symbol.
 
-### Piecewise (planned)
+### Piecewise
 
 Decisions so far:
 
@@ -209,12 +209,37 @@ Decisions so far:
 - **Backspace/Delete** at the edge of a piecewise step out of it rather than dissolving
   it (its rows don't join up into anything meaningful).
 - **Copy:** the editor format round-trips; LaTeX copies as `cases`.
-- **Not yet:** parsing (a piecewise parses as a placeholder, so the outputs show
-  `Missing`), adding and removing pieces and otherwise, and pasting `cases` LaTeX.
+**Editing pieces (done).** Commands in commands.ts, acting on the innermost piecewise
+around the cursor (which may be deep inside a piece):
 
-Next: editing gestures (proposed: Enter in a piece adds one below, Backspace in an empty
-piece removes it, and some way to delete and re-add otherwise), then parsing and the
-exports.
+- **Enter** (`newPiece`) adds an empty piece below the current one, with the cursor in
+  its value; from otherwise, the new piece goes last, just above it. Outside a piecewise
+  Enter does nothing in MathField and bubbles up, so the workbench adds a line as before.
+- **Backspace** at the start of an empty piece's value removes the piece and goes to
+  the end of the condition above; **Delete** in an empty piece removes it and goes to
+  the start of what followed. The only piece is never removed this way; Backspace
+  steps out before the piecewise instead. In a non-empty piece they move between rows
+  as in any structure.
+- **Otherwise:** Backspace or Delete in an empty otherwise removes it. `\otherwise`
+  (`addOtherwise`) adds it back as `0.0`, selected so that typing replaces it, or moves to
+  the existing one.
+- A piecewise whose rows are all empty goes in one Backspace, like other structures.
+- Each of these is one undo step.
+
+**Parsing and exports (done).**
+
+- **AST:** `Piecewise { pieces: [{ value, condition }], otherwise: AstNode | null }`.
+  It is a primary like a fraction, so it can appear anywhere in an expression (`2{…}+1`).
+  An empty value or condition is a placeholder.
+- **MathJSON:** `["Which", condition₀, value₀, …, "True", otherwise]`.
+- **Content MathML:** `<piecewise><piece>value condition</piece>…<otherwise>value
+  </otherwise></piecewise>` (its own element, not an `<apply>`). In CellML mode the
+  numbers inside get `cellml:units` like any others.
+- **LaTeX:** copied as `\begin{cases} value & condition \\ … \\ otherwise &
+  \text{otherwise}\end{cases}`. Pasting reads `cases`, `dcases` and `rcases`: `&` and
+  `\\` separate cells and lines inside them (outside, `&` is still ∧), a leading
+  `\text{if}` (or for, when) in a condition is dropped, and a condition of
+  `\text{otherwise}` or `else` makes that line the otherwise.
 
 ### Rendering and caret notes (step 3)
 

@@ -601,7 +601,8 @@ function toggleCopyMenu(event: Event) {
           <kbd>←</kbd><kbd>→</kbd> move through every position · <kbd>↑</kbd
           ><kbd>↓</kbd> numerator/denominator, else previous/next line · <kbd>Home</kbd
           ><kbd>End</kbd> start/end · <kbd>Tab</kbd> next empty slot · <kbd>Space</kbd> step out of
-          a fraction, exponent or bracket · <kbd>Enter</kbd> new line
+          a fraction, exponent or bracket · <kbd>Enter</kbd> new line (in a piecewise: new piece;
+          <kbd>Backspace</kbd> in an empty piece removes it; <code>\otherwise</code> adds one)
         </p>
         <p class="key-hint">
           Select with <kbd>Shift</kbd>+<kbd>←</kbd><kbd>→</kbd>, <kbd>Shift</kbd>+<kbd>Home</kbd
@@ -619,7 +620,7 @@ function toggleCopyMenu(event: Event) {
           and <code>_</code> with no operator between them are one name (<code>Vm_init</code>);
           multiply names with <code>*</code> (<code>a*b</code>) · a name spelling a function
           (<code>sin</code>, <code>cosh</code>, …) is that function · <code>\</code> commands (<code
-            >\frac \sqrt \root \abs \dd \sin \alpha</code
+            >\frac \sqrt \root \abs \dd \cases \sin \alpha</code
           >
           …) · <kbd>Backspace</kbd>/<kbd>Delete</kbd> delete · <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo
         </p>

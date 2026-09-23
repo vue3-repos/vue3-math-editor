@@ -28,6 +28,7 @@ import {
   func,
   group,
   newAtomId,
+  piecewise,
   root,
   setChildRow,
   superscript,
@@ -286,6 +287,8 @@ function tokenize(text: string): Token[] {
   return tokens
 }
 
+const TEXT_COMMANDS = new Set(['text', 'textrm', 'textnormal', 'textit', 'mbox', 'mathrm'])
+const CASES_ENVIRONMENTS = new Set(['cases', 'dcases', 'rcases'])
 const SPACING = new Set([',', ';', ':', '!', ' ', 'quad', 'qquad', 'displaystyle', 'textstyle'])
 const OPERATOR_CHARS = new Set(['+', '-', '−', '=', ',', '·', '*', '×'])
 
@@ -304,6 +307,8 @@ class LatexReader {
   private readonly uprightD = new WeakSet<Atom>()
   // How many |…| are open, so a "|" closes rather than opens.
   private absDepth = 0
+  // How many \begin{cases} are open, so "&", "\\" and \end end a cell.
+  private casesDepth = 0
 
   constructor(private readonly tokens: Token[]) {}
 
@@ -327,6 +332,7 @@ class LatexReader {
   private atStop(stop: Stop): boolean {
     const token = this.peek()
     if (!token) return true
+    if (this.casesDepth > 0 && this.atCellEnd()) return true
     if (stop.close && token.kind === 'close') return true
     if (stop.right && token.kind === 'command' && token.name === 'right') return true
     if (token.kind === 'char') {
@@ -336,6 +342,68 @@ class LatexReader {
       if (stop.closing && token.value === '|' && this.absDepth > 0) return true
     }
     return false
+  }
+
+  // Inside cases: "&" (next column), "\\" (next line) or \end.
+  private atCellEnd(): boolean {
+    const token = this.peek()
+    if (token?.kind === 'char') return token.value === '&'
+    return token?.kind === 'command' && (token.name === '\\' || token.name === 'end')
+  }
+
+  // \begin{cases} … \end{cases}, after the \begin{cases}: "value & condition"
+  // lines separated by \\. A condition of \text{otherwise} (or "else") makes
+  // that line the otherwise; a leading \text{if} (for, when) is dropped.
+  private readCases(): Atom {
+    const pieces: Array<[Row, Row]> = []
+    let otherwise: Row | null = null
+    this.casesDepth++
+
+    for (;;) {
+      const value = this.readRow({})
+      let condition: Row = []
+      let isOtherwise = false
+
+      if (this.peek()?.kind === 'char') {
+        this.next() // "&"
+        const word = this.readConditionWord()
+        isOtherwise = word === 'otherwise'
+        condition = this.readRow({})
+        const spelled = condition.map((a) => (a.kind === 'symbol' ? a.value : '?')).join('')
+        if (/^(otherwise|else)$/.test(spelled)) {
+          isOtherwise = true
+          condition = []
+        }
+      }
+
+      if (isOtherwise) otherwise = value
+      else if (value.length > 0 || condition.length > 0) pieces.push([value, condition])
+
+      const token = this.next()
+      if (!token || token.kind !== 'command' || token.name !== '\\') {
+        if (token?.kind === 'command' && token.name === 'end') this.readText()
+        break
+      }
+    }
+
+    this.casesDepth--
+    return piecewise(pieces.length > 0 ? pieces : [[[], []]], otherwise)
+  }
+
+  // A word at the start of a condition cell, in \text{…}: "otherwise" (or
+  // "else"), or "if", "for", "when" (dropped); anything else is left unread.
+  private readConditionWord(): 'otherwise' | 'if' | null {
+    const token = this.peek()
+    if (token?.kind !== 'command' || !TEXT_COMMANDS.has(token.name)) return null
+
+    const start = this.index
+    this.next()
+    const word = this.readText().trim().replace(/[,:]$/, '').toLowerCase()
+    if (word === 'otherwise' || word === 'else') return 'otherwise'
+    if (['if', 'for', 'when'].includes(word)) return 'if'
+
+    this.index = start
+    return null
   }
 
   // Read atoms until a stop (not consumed).
@@ -516,6 +584,14 @@ class LatexReader {
     }
 
     switch (name) {
+      case 'begin': {
+        const environment = this.readText()
+        if (CASES_ENVIRONMENTS.has(environment)) atoms.push(this.readCases())
+        return
+      }
+      case 'end':
+        this.readText() // a stray \end
+        return
       case 'frac':
       case 'dfrac':
       case 'tfrac': {

@@ -6,10 +6,10 @@
 // It owns no state. Navigation and selection emit `navigate` with the new
 // { cursor, anchor }; edits emit `edit` with the new { root, cursor } and what
 // kind of edit it was (so the parent can record undo history, grouping
-// consecutive typing; see editor/history.ts). Keys it doesn't use bubble up: Enter,
+// consecutive typing; see editor/history.ts). Keys it doesn't use bubble up:
 // Ctrl/Cmd/Alt shortcuts other than select-all, ↑/↓ with no row above/below,
-// and Backspace/Delete/Tab when they have nothing to do here (e.g. Backspace
-// in an empty equation).
+// and Backspace/Delete/Tab/Enter when they have nothing to do here (e.g.
+// Backspace in an empty equation, Enter outside a piecewise).
 //
 // Marks underline atoms with a problem (a parser diagnostic, or later a
 // units issue) and show the message when the pointer is over them.
@@ -286,7 +286,7 @@ function handleKeydown(event: KeyboardEvent) {
 }
 
 // Keys that do nothing here bubble up for the parent to use.
-const BUBBLE_WHEN_UNUSED = new Set(['Backspace', 'Delete', 'Tab'])
+const BUBBLE_WHEN_UNUSED = new Set(['Backspace', 'Delete', 'Tab', 'Enter'])
 
 function handleEditKey(event: KeyboardEvent, current: EditorState) {
   if (props.readonly) return

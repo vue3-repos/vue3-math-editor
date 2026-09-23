@@ -205,6 +205,39 @@ When pasting, LaTeX commands (`\leq`, `\land`, `\neg`, `\not=`, …) and plain-t
 `>=`, `!=`, `==` and `&&` are all understood. The words `and`, `or` and `not` are not:
 they paste as names.
 
+## Piecewise definitions
+
+A piecewise definition gives a value for each case, with an optional value for when no
+case applies:
+
+```
+          ⎧ 0.25 / T_vc    chi_vfloor > eps_2 ∧ chi_vfloor ≤ 0.25
+dchi_v/dt ⎨ 0.5 / …        chi_vfloor > 0.5
+          ⎩ 0.0            otherwise
+```
+
+- **Insert one** with `\cases` (or `\piecewise`) or the toolbar button. It starts with
+  one empty case and an otherwise of `0.0`, a placeholder for you to replace, with the
+  caret in the first value. With something selected, the selection becomes the first
+  value.
+- **Move around** as anywhere else: → goes from a value to its condition, then on to the
+  next case; ↑ and ↓ move between cases in the same column; Tab jumps to the next empty
+  slot.
+- **Enter** adds a new case below the one you're in. (Outside a piecewise, Enter still
+  starts a new equation line.)
+- **Backspace** in an empty case removes it; so does Delete. The last remaining case
+  isn't removed this way.
+- **Otherwise is optional:** delete its contents, then Backspace once more to remove
+  it. `\otherwise` puts it back, with `0.0` selected so you can type over it.
+- A piecewise is an expression, so it can go anywhere: `y = 2{…} + 1` is fine.
+
+Conditions use the comparison and logical operators described under *Conditions*.
+
+In exports it becomes `<piecewise>` with `<piece>` and `<otherwise>` in Content MathML,
+`Which` in MathJSON, and a `cases` environment in LaTeX. Pasting a LaTeX `cases` (or
+`dcases`) environment gives a piecewise, understanding `\text{if}` and
+`\text{otherwise}`.
+
 ## Structures
 
 Structures are created by keys, by `\` commands, or by the toolbar. The caret goes into
@@ -342,7 +375,6 @@ Type `\`, the command's name, then Space, Enter, Tab or `(`. Esc cancels.
   *Names*).
 - **Declaring your own functions**, so that `f(x)` is a function call rather than f × x.
 - **Chained comparisons** such as `a < b < c`: join them with ∧ instead.
-- **Piecewise definitions** (cases). Planned; conditions are the first part.
 - **Integrals, sums, products, limits and matrices.**
 - **Typing a Greek letter's name without a backslash** to get the letter.
 - **Pasting several lines as several equations.** Pasted text all goes into one equation.

@@ -450,9 +450,14 @@ class Parser {
           variable: this.child(atom.variable),
         }
       case 'piecewise':
-        // Prototype: the layout and caret work, but a piecewise isn't parsed
-        // or exported yet.
-        return placeholder()
+        return {
+          type: 'Piecewise',
+          pieces: atom.pieces.map(({ value, condition }) => ({
+            value: this.child(value),
+            condition: this.child(condition),
+          })),
+          otherwise: atom.otherwise ? this.child(atom.otherwise) : null,
+        }
       case 'superscript':
         // Unreachable: superscripts never start a primary (see startsPrimary).
         return { type: 'Power', base: placeholder(), exponent: this.child(atom.sup) }

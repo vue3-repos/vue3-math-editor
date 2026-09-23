@@ -82,6 +82,17 @@ export function astToMathJson(node: AstNode): MathJsonValue {
     case 'Not':
       return ['Not', astToMathJson(node.value)]
 
+    // ["Which", condition₀, value₀, …, "True", otherwise]
+    case 'Piecewise':
+      return [
+        'Which',
+        ...node.pieces.flatMap(({ value, condition }) => [
+          astToMathJson(condition),
+          astToMathJson(value),
+        ]),
+        ...(node.otherwise ? ['True', astToMathJson(node.otherwise)] : []),
+      ]
+
     case 'Divide':
       return ['Divide', astToMathJson(node.numerator), astToMathJson(node.denominator)]
 
