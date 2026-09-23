@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import EquationWorkbench from './components/EquationWorkbench.vue'
+
+// Demo switch: open the page with ?cellml for CellML mode.
+const cellml = new URLSearchParams(window.location.search).has('cellml')
 </script>
 
 <template>
@@ -9,7 +12,7 @@ import EquationWorkbench from './components/EquationWorkbench.vue'
       <p>Canonical AST editing for LaTeX and Content MathML output.</p>
     </section>
 
-    <EquationWorkbench />
+    <EquationWorkbench :cellml="cellml" />
   </main>
 </template>
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { latexToRow } from '../src/editor/clipboard'
-import { contentMathML, exportRow, formatXml } from '../src/editor/exports'
+import { CELLML_NAMESPACE, contentMathML, exportRow, formatXml } from '../src/editor/exports'
 import { selectedAtoms } from '../src/editor/selection'
 import { press, type } from './editorHelpers'
 
@@ -37,6 +37,57 @@ describe('Content MathML', () => {
     const mathml = contentMathML(latexToRow('\\sqrt[3]{x}+\\log(x,2)'))
     expect(mathml).toContain('<degree>\n        <cn>3</cn>\n      </degree>')
     expect(mathml).toContain('<logbase>\n        <cn>2</cn>\n      </logbase>')
+  })
+})
+
+describe('Content MathML in CellML mode', () => {
+  const cellml = { cellml: true }
+
+  it('declares the CellML namespace and gives every number placeholder units', () => {
+    expect(contentMathML(latexToRow('y=2x+1'), cellml)).toBe(
+      [
+        '<math xmlns="http://www.w3.org/1998/Math/MathML" xmlns:cellml="http://www.cellml.org/cellml/2.0#">',
+        '  <apply>',
+        '    <eq/>',
+        '    <ci>y</ci>',
+        '    <apply>',
+        '      <plus/>',
+        '      <apply>',
+        '        <times/>',
+        '        <cn cellml:units="undefined">2</cn>',
+        '        <ci>x</ci>',
+        '      </apply>',
+        '      <cn cellml:units="undefined">1</cn>',
+        '    </apply>',
+        '  </apply>',
+        '</math>',
+      ].join('\n'),
+    )
+  })
+
+  it('reaches numbers at any depth', () => {
+    const mathml = contentMathML(latexToRow('\\sqrt[3]{x}+\\log(x,2)+\\frac{1}{2}'), cellml)
+    expect(mathml.match(/<cn cellml:units="undefined">/g)).toHaveLength(4)
+    expect(mathml).not.toMatch(/<cn>/)
+  })
+
+  it('is well-formed XML with the units in the CellML namespace', () => {
+    const doc = new DOMParser().parseFromString(
+      contentMathML(latexToRow('x=3.5'), cellml),
+      'application/xml',
+    )
+    expect(doc.getElementsByTagName('parsererror')).toHaveLength(0)
+    const cn = doc.getElementsByTagName('cn')[0]
+    expect(cn.getAttributeNS(CELLML_NAMESPACE, 'units')).toBe('undefined')
+    expect(cn.textContent).toBe('3.5')
+  })
+
+  it('is off by default, and only changes Content MathML', () => {
+    const row = latexToRow('x=2')
+    expect(contentMathML(row)).not.toContain('cellml')
+    expect(exportRow(row, 'mathml', cellml)).toBe(contentMathML(row, cellml))
+    expect(exportRow(row, 'mathjson', cellml)).toBe(exportRow(row, 'mathjson'))
+    expect(exportRow(row, 'latex', cellml)).toBe(exportRow(row, 'latex'))
   })
 })
 

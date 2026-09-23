@@ -259,6 +259,16 @@ confirms the format copied.
   `<math xmlns="http://www.w3.org/1998/Math/MathML">` and re-indented by `formatXml`. The
   Content MathML panel now shows the same document.
 
+**CellML mode.** `EquationWorkbench` takes a `cellml` prop (off by default, so other
+consumers get plain Content MathML). When it is on, the Content MathML panel and "Copy
+as" (labelled "Content MathML (CellML)") produce MathML ready to put in a CellML 2.0
+model: the root `<math>` also declares
+`xmlns:cellml="http://www.cellml.org/cellml/2.0#"`, and every number is written
+`<cn cellml:units="undefined">2</cn>`, a placeholder for its real units, which CellML
+requires on every `<cn>`. The option is `{ cellml: true }` on `exportRow`,
+`contentMathML` and `astToContentMathML`; MathJSON and LaTeX ignore it. In the demo
+app, open the page with `?cellml` to turn it on.
+
 Copy as uses the async clipboard API (`text/plain` only), falling back to
 `document.execCommand('copy')` where that isn't available.
 
@@ -318,10 +328,11 @@ equation. Nothing is built yet; these notes record how the editor should fit aro
   `[A-Za-z][A-Za-z0-9_]*`, which matches CellML's identifier rule, and Greek letters
   are exported by name (`<ci>alpha</ci>`). An empty slot exports as `<ci>_</ci>`,
   which is not a valid identifier, so incomplete equations should not be sent.
-- **Numbers will need units.** CellML 2.0 requires `cellml:units` on every `<cn>`,
-  and the export currently writes a bare `<cn>2</cn>`. Deciding how a constant gets
-  its units (a default of `dimensionless`, set by the host, or entered by the user) is
-  the one open question that touches the editor's semantics.
+- **Numbers need units.** CellML 2.0 requires `cellml:units` on every `<cn>`. CellML
+  mode (above) writes `cellml:units="undefined"` as a placeholder. How a constant gets
+  its real units (set by the host, entered by the user, or suggested from libCellML's
+  analysis) is still open, and is the one question that touches the editor's
+  semantics.
 
 ## What was kept, replaced and removed
 

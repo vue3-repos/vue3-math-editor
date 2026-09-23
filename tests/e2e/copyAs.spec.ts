@@ -93,3 +93,32 @@ test('the MathML panel shows the same document', async () => {
     '<math xmlns="http://www.w3.org/1998/Math/MathML">',
   )
 })
+
+test.describe('CellML mode', () => {
+  test.beforeEach(async () => {
+    await wb.goto('/?cellml')
+    await wb.focusLine(0)
+  })
+
+  test('the Content MathML panel is CellML-ready', async () => {
+    await wb.type('y=2x')
+    await expect(wb.page.locator('[data-role="cellml-mode"]')).toBeVisible()
+    const panel = wb.page.locator('[data-role="mathml"]')
+    await expect(panel).toContainText('xmlns:cellml="http://www.cellml.org/cellml/2.0#"')
+    await expect(panel).toContainText('<cn cellml:units="undefined">2</cn>')
+  })
+
+  test('copies CellML-ready Content MathML', async () => {
+    await wb.type('y=2x')
+    await copyAs('Content MathML (CellML)')
+    await expect.poll(readClipboard).toContain('<cn cellml:units="undefined">2</cn>')
+    await expect.poll(readClipboard).toContain('xmlns:cellml="http://www.cellml.org/cellml/2.0#"')
+  })
+})
+
+test('without CellML mode, Content MathML has no CellML markup', async () => {
+  await wb.type('y=2x')
+  await expect(wb.page.locator('[data-role="cellml-mode"]')).toHaveCount(0)
+  await expect(wb.page.locator('[data-role="mathml"]')).toContainText('<cn>2</cn>')
+  await expect(wb.page.locator('[data-role="mathml"]')).not.toContainText('cellml')
+})

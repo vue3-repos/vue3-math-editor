@@ -260,6 +260,10 @@ With a selection:
 - **Copy as** in the toolbar copies the selection, or the whole equation, as **LaTeX**,
   **MathJSON** or **Content MathML**. A selection is exported on its own, so selecting
   `a+b` in `y=a+b` gives just `a+b`.
+- In **CellML mode** (set by the application using the editor), Content MathML is
+  ready for a CellML 2.0 model: it declares the CellML namespace, and every number gets
+  `cellml:units="undefined"` as a placeholder for its units, which you'll need to
+  replace with the real ones.
 
 ## `\` commands
 

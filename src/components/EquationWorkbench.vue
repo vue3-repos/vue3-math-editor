@@ -8,6 +8,12 @@
 // handles what spans lines (Enter, ↑/↓ between lines, removing an empty
 // line) and command mode. The semantic AST shown in the output panels is
 // parsed from the active line's layout tree.
+//
+// Props:
+// - `cellml`: CellML mode. The Content MathML (output panel and "Copy as")
+//   declares the CellML namespace on <math> and gives every number
+//   cellml:units="undefined", a placeholder for its real units. Off by
+//   default, so other consumers get plain Content MathML.
 import { computed, nextTick, ref, toRaw } from 'vue'
 import katex from 'katex'
 import Button from 'primevue/button'
@@ -39,6 +45,10 @@ import { parseRow } from '../editor/parse'
 import { describeSelection, selectedAtoms, selectionOf } from '../editor/selection'
 import { astToLatex } from '../renderers/latex'
 import { renderMathJson } from '../renderers/mathjson'
+
+const props = withDefaults(defineProps<{ cellml?: boolean }>(), { cellml: false })
+
+const exportOptions = computed(() => ({ cellml: props.cellml }))
 
 const equations = ref<EditorState[]>([emptyState()])
 const activeIndex = ref(0)
@@ -309,7 +319,7 @@ const ast = computed(() => parsed.value?.ast ?? null)
 const diagnostics = computed(() => parsed.value?.diagnostics ?? [])
 const latex = computed(() => (ast.value ? astToLatex(ast.value) : ''))
 const mathjson = computed(() => (ast.value ? renderMathJson(ast.value) : ''))
-const mathml = computed(() => (ast.value ? contentMathML(active().root) : ''))
+const mathml = computed(() => (ast.value ? contentMathML(active().root, exportOptions.value) : ''))
 const cursorLabel = computed(() => describeCursor(active().cursor))
 const selectionLabel = computed(() => {
   const selection = selectionOf(active())
@@ -386,7 +396,7 @@ async function copyAs(format: ExportFormat, label: string) {
   const atoms = selectionOf(state) ? selectedAtoms(state) : state.root
 
   if (atoms.length > 0) {
-    await writeClipboard(exportRow(atoms, format))
+    await writeClipboard(exportRow(atoms, format, exportOptions.value))
     copiedFormat.value = label
     window.clearTimeout(copiedTimer)
     copiedTimer = window.setTimeout(() => (copiedFormat.value = null), 1500)
@@ -395,10 +405,12 @@ async function copyAs(format: ExportFormat, label: string) {
   focusActive()
 }
 
-const copyAsItems = EXPORT_FORMATS.map(({ format, label }) => ({
-  label,
-  command: () => copyAs(format, label),
-}))
+const copyAsItems = computed(() =>
+  EXPORT_FORMATS.map(({ format, label }) => {
+    const shown = format === 'mathml' && props.cellml ? `${label} (CellML)` : label
+    return { label: shown, command: () => copyAs(format, shown) }
+  }),
+)
 
 function toggleCopyMenu(event: Event) {
   copyMenu.value?.toggle(event)
@@ -587,7 +599,10 @@ function toggleCopyMenu(event: Event) {
 
     <Card class="output-card" aria-labelledby="mathml-preview-title">
       <template #title>
-        <div id="mathml-preview-title">Content MathML</div>
+        <div class="preview-title-row">
+          <div id="mathml-preview-title">Content MathML</div>
+          <Tag v-if="cellml" severity="secondary" value="CellML" data-role="cellml-mode" />
+        </div>
       </template>
       <template #content>
         <pre data-role="mathml">{{ mathml }}</pre>

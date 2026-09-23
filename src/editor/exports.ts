@@ -4,12 +4,16 @@
 // their own, so selecting "a+b" in "y=a+b" gives the MathJSON for a+b. A
 // selection that isn't a complete expression (e.g. "+b") gets placeholders
 // for what's missing, as in the output panels.
+//
+// CellML mode (`{ cellml: true }`) makes the Content MathML ready for a CellML
+// model: the root <math> declares the CellML namespace, and every number
+// carries `cellml:units="undefined"` as a placeholder for its real units.
 
 import { rowToLatexSource } from './clipboard'
 import type { Row } from './layout'
 import { parseRow } from './parse'
 import { renderMathJson } from '../renderers/mathjson'
-import { astToContentMathML } from '../renderers/mathml'
+import { type ContentMathMLOptions, astToContentMathML } from '../renderers/mathml'
 
 export type ExportFormat = 'latex' | 'mathjson' | 'mathml'
 
@@ -20,22 +24,28 @@ export const EXPORT_FORMATS: ReadonlyArray<{ format: ExportFormat; label: string
 ]
 
 const MATHML_NAMESPACE = 'http://www.w3.org/1998/Math/MathML'
+export const CELLML_NAMESPACE = 'http://www.cellml.org/cellml/2.0#'
 
-export function exportRow(row: Row, format: ExportFormat): string {
+export type ExportOptions = ContentMathMLOptions
+
+export function exportRow(row: Row, format: ExportFormat, options: ExportOptions = {}): string {
   switch (format) {
     case 'latex':
       return rowToLatexSource(row)
     case 'mathjson':
       return renderMathJson(parseRow(row).ast)
     case 'mathml':
-      return contentMathML(row)
+      return contentMathML(row, options)
   }
 }
 
 // A complete, indented Content MathML document for a row.
-export function contentMathML(row: Row): string {
-  const body = astToContentMathML(parseRow(row).ast)
-  return formatXml(`<math xmlns="${MATHML_NAMESPACE}">${body}</math>`)
+export function contentMathML(row: Row, options: ExportOptions = {}): string {
+  const body = astToContentMathML(parseRow(row).ast, options)
+  const namespaces = options.cellml
+    ? `xmlns="${MATHML_NAMESPACE}" xmlns:cellml="${CELLML_NAMESPACE}"`
+    : `xmlns="${MATHML_NAMESPACE}"`
+  return formatXml(`<math ${namespaces}>${body}</math>`)
 }
 
 // Re-indent simple XML (elements and text only, as the MathML renderer

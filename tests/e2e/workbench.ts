@@ -16,8 +16,8 @@ export interface Box {
 export class Workbench {
   constructor(readonly page: Page) {}
 
-  async goto(): Promise<void> {
-    await this.page.goto('/')
+  async goto(path = '/'): Promise<void> {
+    await this.page.goto(path)
     await this.page.locator('.math-field').first().waitFor()
     // Glyph metrics change once the KaTeX fonts load.
     await this.page.evaluate(() => document.fonts.ready.then(() => undefined))
