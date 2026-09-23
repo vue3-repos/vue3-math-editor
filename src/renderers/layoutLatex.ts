@@ -12,6 +12,7 @@
 
 import type { Atom, Row, RowPath, RowPathSegment } from '../editor/layout'
 import { rowPathsEqual } from '../editor/layout'
+import { GREEK_NAMES, nameRuns } from '../editor/identifiers'
 import { getFunctionDefinition } from '../registry/nodes'
 
 export interface LayoutLatexOptions {
@@ -49,13 +50,6 @@ export function decodeRowPath(encoded: string | null | undefined): RowPath | nul
 // Symbols
 // ---------------------------------------------------------------------------
 
-const GREEK_NAMES = new Set([
-  'alpha', 'beta', 'gamma', 'delta', 'epsilon', 'varepsilon', 'zeta', 'eta', 'theta',
-  'vartheta', 'iota', 'kappa', 'lambda', 'mu', 'nu', 'xi', 'pi', 'rho', 'sigma', 'tau',
-  'upsilon', 'phi', 'varphi', 'chi', 'psi', 'omega', 'Gamma', 'Delta', 'Theta', 'Lambda',
-  'Xi', 'Pi', 'Sigma', 'Upsilon', 'Phi', 'Psi', 'Omega',
-]) // prettier-ignore
-
 const BINARY: Record<string, string> = {
   '+': '+',
   '-': '-',
@@ -91,6 +85,11 @@ function tag(id: string, body: string): string {
   return `\\htmlData{atom=${id}}{${body}}`
 }
 
+// One character of a multi-character name, in the word italic.
+function nameGlyph(char: string): string {
+  return char === '_' ? '\\_' : `\\mathit{${char}}`
+}
+
 function renderSymbol(id: string, value: string): string {
   if (value in BINARY) return `\\mathbin{${tag(id, BINARY[value])}}`
   if (value in RELATION) return `\\mathrel{${tag(id, RELATION[value])}}`
@@ -121,12 +120,36 @@ function renderRow(row: Row, path: RowPath, options: LayoutLatexOptions): string
     body = `\\htmlClass{me-ph${active ? ' me-ph-active' : ''}}{\\square}`
   } else {
     const pieces: string[] = []
+    const runs = new Map(nameRuns(row).map((run) => [run.start, run]))
 
-    row.forEach((atom, index) => {
+    for (let index = 0; index < row.length; index++) {
+      const atom = row[index]
       const childPath = (branch: RowPathSegment['branch']): RowPath => [
         ...path,
         { atom: index, branch },
       ]
+
+      // A name (identifiers.ts) is one piece, so an exponent after it
+      // attaches to the whole name. A function name is drawn upright, as an
+      // operator (\mathop keeps TeX's spacing: "sin x"). Each character is
+      // still tagged separately for the caret.
+      const run = runs.get(index)
+      if (run && run.end - run.start > 1) {
+        const letters = row.slice(run.start, run.end)
+        if (run.functionName) {
+          pieces.push(
+            `\\mathop{${letters.map((l) => tag(l.id, `\\mathrm{${(l as { value: string }).value}}`)).join('')}}`,
+          )
+        } else {
+          // \\mathit is TeX's italic for words: "Vm" reads as one name, not
+          // the slightly spaced V m of single-letter maths italic.
+          pieces.push(
+            `{${letters.map((l) => tag(l.id, nameGlyph((l as { value: string }).value))).join('')}}`,
+          )
+        }
+        index = run.end - 1
+        continue
+      }
 
       if (atom.kind === 'superscript') {
         // Attach to the previous atom's LaTeX so KaTeX positions the exponent
@@ -135,11 +158,11 @@ function renderRow(row: Row, path: RowPath, options: LayoutLatexOptions): string
         const previous = row[index - 1]
         const base = previous && !isOperatorSymbol(previous) ? pieces.pop()! : ''
         pieces.push(`{${base}}^{${tag(atom.id, renderRow(atom.sup, childPath('sup'), options))}}`)
-        return
+        continue
       }
 
       pieces.push(renderAtom(atom, childPath, options))
-    })
+    }
 
     body = pieces.join('')
   }

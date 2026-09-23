@@ -63,13 +63,13 @@ test('each line keeps its own cursor', async () => {
   await wb.press('Enter')
   await wb.enterSample('sin-squared', 1)
   await wb.press('Home')
-  await wb.press('ArrowRight', 2)
-  await expect(wb.cursor()).toHaveText('1.body @ 0')
+  await wb.press('ArrowRight', 4) // s, i, n, then into the brackets
+  await expect(wb.cursor()).toHaveText('3.body @ 0')
 
   await wb.focusLine(0)
   await expect(wb.cursor()).toHaveText('root @ 5')
   await wb.focusLine(1)
-  await expect(wb.cursor()).toHaveText('1.body @ 0')
+  await expect(wb.cursor()).toHaveText('3.body @ 0')
 })
 
 test('↑ and ↓ move between stacked rows, matching the caret x position', async () => {

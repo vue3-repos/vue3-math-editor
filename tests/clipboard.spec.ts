@@ -109,8 +109,38 @@ describe('pasting LaTeX', () => {
     expect(pasted('\\frac{\\square}{2}')).toBe('[/2]')
   })
 
-  it('keeps the content of unsupported subscripts', () => {
-    expect(pasted('x_1+x_{2}')).toBe('x1+x2')
+  it('keeps a subscript as a literal underscore in the name', () => {
+    expect(pasted('x_1+x_{2}')).toBe('x_1+x_2')
+    expect(json({ root: latexToRow('x_1+x_{2}'), cursor: { path: [], offset: 0 } })).toEqual([
+      'Add',
+      'x_1',
+      'x_2',
+    ])
+  })
+})
+
+describe('names', () => {
+  const typed = (keys: string) => type(keys).root
+
+  it('are copied as one italic LaTeX name, functions as the function', () => {
+    expect(rowToLatexSource(typed('Vm_init=2Vm'))).toBe('\\mathit{Vm\\_init}=2\\mathit{Vm}')
+    expect(rowToLatexSource(typed('x*sin(t)'))).toBe('x\\cdot \\sin \\left(t\\right)')
+    expect(rowToLatexSource(typed('cost'))).toBe('\\mathit{cost}')
+  })
+
+  it('round-trip through LaTeX as typed characters', () => {
+    for (const keys of ['Vm_init=2Vm', 'x*sin(t)', 'cost+x2', 'V1_a^2']) {
+      const tree = typed(keys)
+      expect(text(latexToRow(rowToLatexSource(tree))), keys).toBe(text(tree))
+    }
+  })
+
+  it('in pasted plain text follow the typing rules', () => {
+    const json1 = (source: string) =>
+      json({ root: latexToRow(source), cursor: { path: [], offset: 0 } })
+    expect(json1('Vm_init + 2Vm')).toEqual(['Add', 'Vm_init', ['Multiply', 2, 'Vm']])
+    expect(json1('cost')).toEqual('cost')
+    expect(json1('sin(x)')).toEqual(['Sin', 'x'])
   })
 })
 

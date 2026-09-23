@@ -2,6 +2,9 @@
 
 _Recorded 2026-09-23. Status: accepted; implementation in progress on `refactor/cursor-model` (steps 1–4, selection, clipboard and "copy as" done)._
 
+For how the editor behaves from a user's point of view, see
+[Writing equations](writing-equations.md).
+
 ## Background
 
 The editor started with **node highlighting**: the focused AST node was drawn with a
@@ -88,6 +91,34 @@ The parser never throws. Empty rows and missing operands become `Placeholder`, a
 glyphs it cannot place (an unknown symbol, a comma outside function brackets, a
 malformed number) are skipped and returned as diagnostics tied to the atom's id, so
 the UI can mark them.
+
+### Multi-character names (experimental, branch `experiment/multi-letter-names`)
+
+Under trial: this replaces decision 1 in the table above ("one symbol atom per typed
+letter; `xy` is x·y") if adopted.
+
+- A run of letters, digits and underscores that starts with a letter is one name:
+  `Vm`, `Vm_init`, `x2`, and `ab` too. Multiplying names needs an explicit operator,
+  `a*b` (shown as ·). A number before a name is still a product: `2Vm` is 2·Vm.
+- A name that is exactly a function's spelling (`sin`, `cosh`, `arcsin`) is that function,
+  drawn upright. A longer name containing one (`cost`, `tangent`, `xsin`) is just a name.
+  Letters are no longer converted as they are typed; the grouping is decided from the
+  whole run when parsing and rendering (`editor/identifiers.ts`, shared by the parser, the
+  renderer and the clipboard).
+- A name followed by brackets that isn't a known function is a product: `Vm(t)` is Vm·(t).
+- The underscore is part of the name and shown literally, with no subscript formatting,
+  deliberately, while the wider convention for variable-name formatting is undecided.
+- Each character is still its own atom, so the cursor, selection and Backspace work one
+  character at a time inside a name.
+- Rendering: a multi-character name is drawn in `\mathit` (TeX's italic for words, so
+  `Vm` reads as one name rather than V m) and kept together, so an exponent applies to
+  the whole name.
+- Commands: `\alpha` and the other Greek names insert the Greek letter. Any other
+  `\name` types the name out as letters. `\sin` and the toolbar still insert a function
+  atom.
+- Clipboard: a name is copied as `\mathit{Vm\_init}` and a function spelling as `\sin`.
+  Pasting reads letters as typed characters (so plain text follows the same rules), and
+  keeps `_` literally: `x_{12}` pastes as the name `x_12`.
 
 ### Rendering and caret notes (step 3)
 

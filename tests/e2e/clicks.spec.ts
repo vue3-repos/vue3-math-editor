@@ -69,8 +69,8 @@ test.describe('clicking places the cursor at the nearest gap', () => {
 
   test('inside a function argument', async () => {
     await wb.enterSample('sin-squared')
-    await wb.clickIn(await wb.atomBox(0, 'r/1.body', 0), 0.8)
-    await expect(wb.cursor()).toHaveText('1.body @ 1')
+    await wb.clickIn(await wb.atomBox(0, 'r/3.body', 0), 0.8)
+    await expect(wb.cursor()).toHaveText('3.body @ 1')
   })
 })
 

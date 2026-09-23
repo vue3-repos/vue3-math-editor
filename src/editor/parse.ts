@@ -24,14 +24,18 @@
 //   Subtract(Add(a, b), c).
 // - A leading minus negates the whole following term: `-2x` ->
 //   Negate(Multiply(2, x)), `-x^2` -> Negate(Power(x, 2)).
-// - Each single-letter symbol is its own identifier, so `xy` is x·y. A
-//   symbol whose value is a whole word (e.g. "alpha", inserted by a command)
-//   is one identifier. Function names are FunctionAtoms, created by the
-//   editing commands, never guessed from letters here (so "cost" stays c·o·s·t).
+// - Names (see identifiers.ts): a run of letters, digits and underscores that
+//   starts with a letter is one identifier, so `Vm_init` is one variable and
+//   `ab` is not a·b (write `a*b`). A run that is exactly a function's spelling
+//   (`sin`, `arcsin`) is that function; `cost` is just a name. A number before
+//   a name is still a product: `2Vm` is 2·Vm. A symbol whose value is a whole
+//   word (a Greek letter such as "alpha", inserted by a command) is its own
+//   identifier. Function atoms (from \sin or the toolbar) are functions.
 // - A superscript attaches to the factor before it: `x^2` -> Power(x, 2).
 
 import type { AstNode } from '../types/ast'
-import type { FunctionAtom, Row, StructureAtom } from './layout'
+import { continuesName, functionForSpelling, startsName } from './identifiers'
+import type { Row, StructureAtom } from './layout'
 
 export interface ParseDiagnostic {
   message: string
@@ -60,7 +64,7 @@ type Token =
   | { kind: 'number'; value: number; atomId: string }
   | { kind: 'identifier'; name: string; atomId: string }
   | { kind: 'operator'; op: Operator; atomId: string }
-  | { kind: 'function'; atom: FunctionAtom; atomId: string }
+  | { kind: 'function'; name: string; atomId: string }
   | { kind: 'structure'; atom: StructureAtom; atomId: string }
   | { kind: 'unknown'; value: string; atomId: string }
 
@@ -86,8 +90,25 @@ function tokenize(row: Row, diagnostics: ParseDiagnostic[]): Token[] {
     const atom = row[i]
 
     if (atom.kind === 'function') {
-      tokens.push({ kind: 'function', atom, atomId: atom.id })
+      tokens.push({ kind: 'function', name: atom.name, atomId: atom.id })
       i++
+      continue
+    }
+
+    // A name: a letter, then letters, digits and underscores.
+    if (startsName(atom)) {
+      let name = ''
+      while (i < row.length && continuesName(row[i])) {
+        name += (row[i] as { value: string }).value
+        i++
+      }
+
+      const functionName = functionForSpelling(name)
+      tokens.push(
+        functionName
+          ? { kind: 'function', name: functionName, atomId: atom.id }
+          : { kind: 'identifier', name, atomId: atom.id },
+      )
       continue
     }
 
@@ -282,7 +303,7 @@ class Parser {
       case 'identifier':
         return { type: 'Identifier', name: token.name }
       case 'function':
-        return this.parseFunction(token.atom)
+        return this.parseFunction(token.name)
       case 'structure':
         return this.parseStructure(token.atom)
       default:
@@ -291,7 +312,7 @@ class Parser {
   }
 
   // name(args), name^n(args) or name x.
-  private parseFunction(atom: FunctionAtom): AstNode {
+  private parseFunction(name: string): AstNode {
     const powers: AstNode[] = []
 
     while (this.peekStructure('superscript')) {
@@ -311,7 +332,7 @@ class Parser {
       args = [placeholder()]
     }
 
-    let result: AstNode = { type: 'FunctionCall', name: atom.name, args }
+    let result: AstNode = { type: 'FunctionCall', name, args }
 
     // sin^2(x) means (sin(x))^2.
     for (const exponent of powers) {

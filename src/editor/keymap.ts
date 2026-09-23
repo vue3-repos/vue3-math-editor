@@ -21,7 +21,7 @@ export interface KeyLike {
   shiftKey?: boolean
 }
 
-const SYMBOL_KEYS = /^[A-Za-z0-9.+\-=,]$/
+const SYMBOL_KEYS = /^[A-Za-z0-9_.+\-=,]$/
 
 export function commandForKey(event: KeyLike): Command | null {
   const { key } = event

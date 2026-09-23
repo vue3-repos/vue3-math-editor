@@ -34,15 +34,17 @@ describe('typing symbols', () => {
 })
 
 describe('function names', () => {
-  it('turns typed letters into a function', () => {
+  it('reads typed letters that spell a function as the function', () => {
     const state = type('sin(x)')
     expect(show(state)).toBe('sin(x)‸')
     expect(json(state)).toEqual(['Sin', 'x'])
   })
 
-  it('recognises a name after other letters', () => {
-    expect(show(type('xsin'))).toBe('xsin‸')
-    expect(json(type('xsin(t)'))).toEqual(['Multiply', 'x', ['Sin', 't']])
+  it('never converts letters as they are typed, so longer names keep their spelling', () => {
+    expect(json(type('cost'))).toEqual('cost')
+    expect(json(type('Vm_init'))).toEqual('Vm_init')
+    expect(json(type('xsin(t)'))).toEqual(['Multiply', 'xsin', 't'])
+    expect(json(type('x*sin(t)'))).toEqual(['Multiply', 'x', ['Sin', 't']])
   })
 
   it('extends a function to a longer name', () => {
@@ -53,10 +55,15 @@ describe('function names', () => {
     expect(json(type('arcsin(x)'))).toEqual(['Arcsin', 'x'])
   })
 
-  it('backspace takes a function back to letters', () => {
+  it('Backspace removes one letter of a typed name', () => {
     const state = press(type('sin'), 'Backspace')
     expect(show(state)).toBe('si‸')
-    expect(json(state)).toEqual(['Multiply', 's', 'i'])
+    expect(json(state)).toEqual('si')
+  })
+
+  it('Backspace takes a function inserted by \\sin back to letters', () => {
+    const state = press(namedCommand('sin')(emptyState()), 'ArrowLeft', 'Backspace')
+    expect(show(state)).toBe('si‸()')
   })
 })
 
@@ -212,8 +219,9 @@ describe('Delete', () => {
     expect(show(press(type('(x', 'Delete')))).toBe('x‸')
   })
 
-  it('takes a function back to letters from the front', () => {
-    expect(show(press(type('sin'), 'ArrowLeft', 'Delete'))).toBe('‸in')
+  it('takes a function inserted by \\sin back to letters from the front', () => {
+    const state = press(namedCommand('sin')(emptyState()), 'ArrowLeft', 'ArrowLeft', 'Delete')
+    expect(show(state)).toBe('‸in()')
   })
 })
 
@@ -261,8 +269,11 @@ describe('named commands', () => {
     expect(show(insertFunction('cos')(emptyState()))).toBe('cos(‸)')
   })
 
-  it('other names insert a named symbol', () => {
+  it('Greek names insert the letter; other names are typed out', () => {
     expect(json(run('alpha'))).toEqual('alpha')
+    expect(show(run('alpha'))).toBe('alpha‸')
+    expect(json(run('speed'))).toEqual('speed')
+    expect(show(run('speed'))).toBe('speed‸')
   })
 })
 

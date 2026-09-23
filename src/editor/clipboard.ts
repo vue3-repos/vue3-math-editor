@@ -7,10 +7,12 @@
 //
 // Pasting prefers CLIPBOARD_MIME and otherwise reads text/plain as LaTeX,
 // which also covers plain typed maths such as "(x+1)/2" or "sin(x)^2".
+// Letters are pasted as typed characters, so names follow the same rules as
+// typing (identifiers.ts): "Vm_init" is one variable, "sin" a function.
 // Everything here is pure; MathField wires it to the browser's clipboard
 // events.
 
-import { functionForSpelling, functionSpellingAt } from './commands'
+import { GREEK_NAMES, functionForSpelling, nameRuns } from './identifiers'
 import {
   type Atom,
   type Row,
@@ -104,13 +106,6 @@ function withFreshIds(atoms: Row): Row {
 // Layout -> LaTeX (text/plain)
 // ---------------------------------------------------------------------------
 
-const GREEK = new Set([
-  'alpha', 'beta', 'gamma', 'delta', 'epsilon', 'varepsilon', 'zeta', 'eta', 'theta',
-  'vartheta', 'iota', 'kappa', 'lambda', 'mu', 'nu', 'xi', 'pi', 'rho', 'sigma', 'tau',
-  'upsilon', 'phi', 'varphi', 'chi', 'psi', 'omega', 'Gamma', 'Delta', 'Theta', 'Lambda',
-  'Xi', 'Pi', 'Sigma', 'Upsilon', 'Phi', 'Psi', 'Omega',
-]) // prettier-ignore
-
 const OPERATOR_LATEX: Record<string, string> = {
   '·': '\\cdot ',
   '*': '\\cdot ',
@@ -134,7 +129,7 @@ const TEXT_ESCAPES: Record<string, string> = {
 function symbolLatex(value: string): string {
   if (value in OPERATOR_LATEX) return OPERATOR_LATEX[value]
   if (/^[A-Za-z0-9.+\-=,]$/.test(value)) return value
-  if (GREEK.has(value)) return `\\${value} `
+  if (GREEK_NAMES.has(value)) return `\\${value} `
   if (/^[A-Za-z]+$/.test(value)) return `\\mathit{${value}}`
   return `\\text{${Array.from(value, (c) => TEXT_ESCAPES[c] ?? c).join('')}}`
 }
@@ -142,14 +137,37 @@ function symbolLatex(value: string): string {
 const isOperatorAtom = (atom: Atom | undefined) =>
   atom?.kind === 'symbol' && /^[+\-−=,·*×]$/.test(atom.value)
 
-// Plain, readable LaTeX for a row (no editor markup). An empty row is
+// Plain, readable LaTeX for a row (no editor markup). A name of more than
+// one character is written \mathit{Vm\_init} so LaTeX treats it as one
+// variable; a function spelling as the function (\sin). An empty row is
 // written as \square, which latexToRow reads back as an empty row.
 export function rowToLatexSource(row: Row): string {
-  const out = row
-    .map((atom, index) => atomLatex(atom, row[index - 1]))
-    .join('')
-    .trim()
-  return out || '\\square'
+  const runs = new Map(nameRuns(row).map((run) => [run.start, run]))
+  let out = ''
+
+  for (let i = 0; i < row.length; ) {
+    const run = runs.get(i)
+
+    if (run) {
+      out += nameLatex(run.name, run.functionName)
+      i = run.end
+      continue
+    }
+
+    out += atomLatex(row[i], row[i - 1])
+    i++
+  }
+
+  return out.trim() || '\\square'
+}
+
+function nameLatex(name: string, functionName: string | null): string {
+  if (functionName) {
+    const definition = getFunctionDefinition(functionName)
+    return definition ? `\\${definition.latexName} ` : `\\operatorname{${functionName}}`
+  }
+
+  return name.length === 1 ? name : `\\mathit{${name.replace(/_/g, '\\_')}}`
 }
 
 function atomLatex(atom: Atom, previous: Atom | undefined): string {
@@ -246,7 +264,7 @@ class LatexReader {
       atoms.push(...this.readRow({}))
       this.next() // skip a stray "}", ")" or \right
     }
-    return recogniseFunctions(atoms)
+    return atoms
   }
 
   private peek(): Token | undefined {
@@ -317,7 +335,9 @@ class LatexReader {
         atoms.push(superscript(this.readScript()))
         return
       case '_':
-        atoms.push(...this.readScript()) // subscripts aren't supported: keep the content
+        // Subscripts aren't supported: the underscore is kept literally as
+        // part of the name, with its content after it (x_{12} -> x_12).
+        atoms.push(symbol('_'), ...this.readScript())
         return
       case '/':
         atoms.push(this.readInfixFraction(atoms))
@@ -333,7 +353,7 @@ class LatexReader {
   private readUntilChar(close: string): Row {
     const body = this.readRow({ char: close })
     this.next() // the closing character (if any)
-    return recogniseFunctions(body)
+    return body
   }
 
   // "a/b" in plain text: the operand before the slash (back to the previous
@@ -347,15 +367,13 @@ class LatexReader {
     const only = numerator[0]
     if (numerator.length === 1 && only.kind === 'group' && only.open === '(') numerator = only.body
 
-    let denominator = recogniseFunctions(
-      this.readRow({ operator: true, closing: true, close: true, right: true }),
-    )
+    let denominator = this.readRow({ operator: true, closing: true, close: true, right: true })
     const single = denominator[0]
     if (denominator.length === 1 && single.kind === 'group' && single.open === '(') {
       denominator = single.body
     }
 
-    return fraction(recogniseFunctions(numerator), denominator)
+    return fraction(numerator, denominator)
   }
 
   // The argument of ^ or _: a braced group, one command, a run of digits, or
@@ -387,7 +405,7 @@ class LatexReader {
       this.next()
       const body = this.readRow({ close: true })
       this.next()
-      return recogniseFunctions(body)
+      return body
     }
 
     const atoms: Row = []
@@ -450,7 +468,7 @@ class LatexReader {
           delimiter?.kind === 'char'
             ? delimiter.value === '|'
             : delimiter?.kind === 'command' && delimiter.name === '|'
-        const body = recogniseFunctions(this.readRow({ right: true }))
+        const body = this.readRow({ right: true })
         this.next() // \right
         this.next() // its delimiter
         atoms.push(group(body, bar ? '|' : '('))
@@ -517,22 +535,8 @@ class LatexReader {
       return
     }
 
-    atoms.push(symbol(text)) // \mathit{speed}
+    atoms.push(...Array.from(text, (c) => symbol(c))) // \mathit{Vm_init}: typed characters
   }
-}
-
-// Letters that spell a function become a function atom, as when typing
-// ("sin" -> sin, "cosh" -> cosh).
-function recogniseFunctions(atoms: Row): Row {
-  const out: Row = []
-
-  for (const atom of atoms) {
-    out.push(atom)
-    const found = functionSpellingAt(out, out.length)
-    if (found) out.splice(found.start, found.length, func(found.name))
-  }
-
-  return out
 }
 
 // Read LaTeX (or plain typed maths) into layout atoms.

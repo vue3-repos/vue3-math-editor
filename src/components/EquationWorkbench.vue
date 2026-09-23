@@ -546,9 +546,13 @@ function toggleCopyMenu(event: Event) {
         <p class="key-hint">
           Type letters, numbers and <code>+ − * = ,</code> where the caret is · <code>/</code> makes
           a fraction of what's before the caret · <code>^</code> exponent · <code>( )</code> and
-          <code>| |</code> brackets · <code>sin</code>, <code>cos</code>, … become functions ·
-          <code>\</code> commands (<code>\frac \sqrt \root \abs \dd \sin \alpha</code> …) ·
-          <kbd>Backspace</kbd>/<kbd>Delete</kbd> delete · <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo
+          <code>| |</code> brackets · letters, digits and <code>_</code> with no operator between
+          them are one name (<code>Vm_init</code>); multiply names with
+          <code>*</code> (<code>a*b</code>) · a name spelling a function (<code>sin</code>,
+          <code>cosh</code>, …) is that function · <code>\</code> commands (<code
+            >\frac \sqrt \root \abs \dd \sin \alpha</code
+          >
+          …) · <kbd>Backspace</kbd>/<kbd>Delete</kbd> delete · <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo
         </p>
       </template>
     </Card>

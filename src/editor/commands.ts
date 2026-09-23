@@ -33,7 +33,8 @@ import {
   symbol,
 } from './layout'
 import { collapseSelection, selectionOf } from './selection'
-import { FUNCTION_REGISTRY, getFunctionDefinition } from '../registry/nodes'
+import { GREEK_NAMES, functionForSpelling } from './identifiers'
+import { getFunctionDefinition } from '../registry/nodes'
 
 export interface EditorState {
   root: Row
@@ -96,10 +97,6 @@ const OPERATOR_VALUES = new Set(['+', '-', '−', '=', '*', '·', '×', ','])
 
 function isOperator(atom: Atom | undefined): boolean {
   return atom?.kind === 'symbol' && OPERATOR_VALUES.has(atom.value)
-}
-
-function isLetter(atom: Atom | undefined): atom is Atom & { kind: 'symbol' } {
-  return atom?.kind === 'symbol' && /^[A-Za-z]$/.test(atom.value)
 }
 
 function isEmptyStructure(atom: Atom): boolean {
@@ -198,64 +195,6 @@ function displayName(name: string): string {
 // Typing
 // ---------------------------------------------------------------------------
 
-// Typed spellings of known functions -> function name ("arcsin" -> "asin").
-const FUNCTION_SPELLINGS = new Map<string, string>()
-for (const definition of Object.values(FUNCTION_REGISTRY)) {
-  FUNCTION_SPELLINGS.set(definition.name, definition.name)
-  FUNCTION_SPELLINGS.set(definition.latexName, definition.name)
-}
-const LONGEST_SPELLING = Math.max(...Array.from(FUNCTION_SPELLINGS.keys(), (s) => s.length))
-
-// The function a spelling names ("sin", "arcsin" -> "asin"), if any.
-export function functionForSpelling(spelling: string): string | undefined {
-  return FUNCTION_SPELLINGS.get(spelling)
-}
-
-// The replacement for a function spelling that ends at `offset` in a row,
-// if there is one: `start` and `length` say which atoms to replace. Two cases:
-// letters that spell a known function ("s", "i", "n" -> sin; the longest
-// spelling wins), and a letter that extends the function just before it
-// ("cos" + "h" -> cosh). Also used when pasting plain text.
-export function functionSpellingAt(
-  row: Row,
-  offset: number,
-): { start: number; length: number; name: string } | null {
-  const letter = row[offset - 1]
-  const previous = row[offset - 2]
-
-  if (isLetter(letter) && previous?.kind === 'function') {
-    const extended = FUNCTION_SPELLINGS.get(displayName(previous.name) + letter.value)
-    if (extended) return { start: offset - 2, length: 2, name: extended }
-  }
-
-  let letters = ''
-  for (let i = offset - 1; i >= 0 && letters.length < LONGEST_SPELLING; i--) {
-    const atom = row[i]
-    if (!isLetter(atom)) break
-    letters = atom.value + letters
-  }
-
-  for (let length = letters.length; length >= 2; length--) {
-    const name = FUNCTION_SPELLINGS.get(letters.slice(-length))
-    if (name) return { start: offset - length, length, name }
-  }
-
-  return null
-}
-
-// After a letter is typed: turn a function spelling just before the cursor
-// into a function atom.
-function recogniseFunctionName(state: EditorState): EditorState {
-  const { path, offset } = state.cursor
-  const found = functionSpellingAt(requireRow(state.root, path), offset)
-  if (!found) return state
-
-  return splice(state, path, found.start, found.length, [func(found.name)], {
-    path,
-    offset: found.start + 1,
-  })
-}
-
 // Insert atoms at the cursor, replacing the selection if there is one; the
 // cursor goes after them (pasting).
 export function insertAtoms(atoms: Row): Command {
@@ -268,13 +207,15 @@ export function insertAtoms(atoms: Row): Command {
   }
 }
 
-// Insert one glyph (digit, letter, operator, …) at the cursor.
+// Insert one glyph (digit, letter, operator, …) at the cursor. Letters are
+// never turned into anything else as they are typed: which letters form a
+// name, and whether a name is a function, is worked out from the whole run
+// when parsing and rendering (see identifiers.ts).
 export function insertSymbol(value: string): Command {
   return (current) => {
     const state = clearSelection(current)
     const { path, offset } = state.cursor
-    const next = splice(state, path, offset, 0, [symbol(value)], { path, offset: offset + 1 })
-    return /^[A-Za-z]$/.test(value) ? recogniseFunctionName(next) : next
+    return splice(state, path, offset, 0, [symbol(value)], { path, offset: offset + 1 })
   }
 }
 
@@ -607,8 +548,9 @@ export const insertDerivative: Command = wrapSelection(
   'expr',
 )
 
-// The command for "\name". Unknown names insert a named symbol, so
-// "\alpha" gives α and "\speed" an identifier called speed.
+// The command for "\name". A Greek letter's name inserts that letter
+// ("\alpha" gives α); any other name is typed out as letters, so "\speed"
+// gives the variable speed.
 export function namedCommand(name: string): Command {
   switch (name) {
     case 'frac':
@@ -629,8 +571,8 @@ export function namedCommand(name: string): Command {
       return insertSuperscript
   }
 
-  const spelled = FUNCTION_SPELLINGS.get(name)
+  const spelled = functionForSpelling(name)
   if (spelled) return insertFunction(spelled)
 
-  return insertSymbol(name)
+  return insertAtoms(GREEK_NAMES.has(name) ? [symbol(name)] : row(name))
 }

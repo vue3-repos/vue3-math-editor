@@ -97,6 +97,27 @@ describe('rowToLatex', () => {
     expect(latex.indexOf('me-ph-active')).toBeGreaterThan(latex.indexOf('row=r/0.den'))
   })
 
+  it('keeps a name together and draws a function name upright', () => {
+    const vm = row('Vm')
+    // In \\mathit, TeX's italic for words, so it reads as one name.
+    expect(rowToLatex(vm)).toContain(
+      `{\\htmlData{atom=${vm[0].id}}{\\mathit{V}}\\htmlData{atom=${vm[1].id}}{\\mathit{m}}}`,
+    )
+
+    const sin = row('sin')
+    expect(rowToLatex(sin)).toContain(
+      `\\mathop{\\htmlData{atom=${sin[0].id}}{\\mathrm{s}}\\htmlData{atom=${sin[1].id}}{\\mathrm{i}}\\htmlData{atom=${sin[2].id}}{\\mathrm{n}}}`,
+    )
+    expect(rowToLatex(row('cost'))).not.toContain('mathrm')
+  })
+
+  it('attaches an exponent to the whole name', () => {
+    const [v, m, sup] = row('Vm', superscript(row('2')))
+    expect(rowToLatex([v, m, sup])).toContain(
+      `{{\\htmlData{atom=${v.id}}{\\mathit{V}}\\htmlData{atom=${m.id}}{\\mathit{m}}}}^{\\htmlData{atom=${sup.id}}`,
+    )
+  })
+
   it('renders greek names, other words and unusual glyphs', () => {
     expect(rowToLatex([symbol('alpha')])).toContain('{\\alpha}')
     expect(rowToLatex([symbol('speed')])).toContain('{\\mathit{speed}}')
@@ -119,8 +140,9 @@ function mulberry32(seed: number): () => number {
   }
 }
 
-// Includes LaTeX special characters, which must be escaped.
-const GLYPHS = Array.from('xy2.+-=*,?{}^_\\%&#~$')
+// Includes LaTeX special characters, which must be escaped, and the letters
+// of "sin", so runs sometimes spell a function name.
+const GLYPHS = Array.from('xysinsin2.+-=*,?{}^_\\%&#~$')
 
 function randomRow(rand: () => number, depth: number): Row {
   const length = Math.floor(rand() * 6)

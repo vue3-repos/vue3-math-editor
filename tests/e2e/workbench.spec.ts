@@ -138,7 +138,7 @@ test.describe('undo and redo', () => {
     await wb.press('ControlOrMeta+z')
     await wb.expectMathJson('a')
     await wb.press('ControlOrMeta+Shift+z')
-    await wb.expectMathJson(['Multiply', 'a', 'b'])
+    await wb.expectMathJson('ab')
   })
 })
 
@@ -164,6 +164,36 @@ test.describe('lines', () => {
     await expect(wb.lines()).toHaveCount(1)
     await expect(wb.line(0)).toBeFocused()
     await expect(wb.cursor()).toHaveText('root @ 3')
+  })
+})
+
+test.describe('names', () => {
+  test('letters, digits and underscores without an operator form one name', async () => {
+    await wb.type('Vm_init=2Vm')
+    await wb.expectMathJson(['Equal', 'Vm_init', ['Multiply', 2, 'Vm']])
+  })
+
+  test('* multiplies names, shown as a dot', async () => {
+    await wb.type('a*b')
+    await wb.expectMathJson(['Multiply', 'a', 'b'])
+  })
+
+  test('a function spelling is a function; a longer name is not', async () => {
+    await wb.type('cost+sin(t)')
+    await wb.expectMathJson(['Add', 'cost', ['Sin', 't']])
+  })
+
+  test('the cursor moves through a name one character at a time', async () => {
+    await wb.type('Vm_init')
+    await wb.press('Home')
+    await wb.press('ArrowRight', 2)
+    await wb.type('x')
+    await wb.expectMathJson('Vmx_init')
+  })
+
+  test('an exponent applies to the whole name', async () => {
+    await wb.type('Vm^2')
+    await wb.expectMathJson(['Power', 'Vm', 2])
   })
 })
 

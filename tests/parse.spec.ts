@@ -48,16 +48,47 @@ describe('numbers and identifiers', () => {
     expect(parse('3.')).toEqual(n(3))
   })
 
-  it('treats each typed letter as its own identifier (xy is x·y)', () => {
-    expect(parse('xy')).toEqual(mul(id('x'), id('y')))
+  it('reads a run of letters, digits and underscores as one name', () => {
+    expect(parse('Vm')).toEqual(id('Vm'))
+    expect(parse('Vm_init')).toEqual(id('Vm_init'))
+    expect(parse('x2')).toEqual(id('x2'))
+    expect(parse('xy')).toEqual(id('xy'))
   })
 
-  it('treats a whole-word symbol as one identifier', () => {
+  it('needs an explicit operator to multiply names', () => {
+    expect(parse('x*y')).toEqual(mul(id('x'), id('y')))
+    expect(parse('Vm*t')).toEqual(mul(id('Vm'), id('t')))
+  })
+
+  it('still multiplies a number by the name after it', () => {
+    expect(parse('2Vm')).toEqual(mul(n(2), id('Vm')))
+    expect(parse('2x+1')).toEqual(add(mul(n(2), id('x')), n(1)))
+  })
+
+  it('takes an exponent on the whole name', () => {
+    expect(parse('Vm', superscript(row('2')))).toEqual(pow(id('Vm'), n(2)))
+  })
+
+  it('reads a name that is exactly a function spelling as that function', () => {
+    expect(parse('sin', group(row('x')))).toEqual(call('sin', id('x')))
+    expect(parse('cosh', group(row('x')))).toEqual(call('cosh', id('x')))
+    expect(parse('arcsin', group(row('x')))).toEqual(call('asin', id('x')))
+    expect(parse('x*sin', group(row('t')))).toEqual(mul(id('x'), call('sin', id('t'))))
+  })
+
+  it('reads a longer name containing a function spelling as a plain name', () => {
+    expect(parse('cost')).toEqual(id('cost'))
+    expect(parse('tangent')).toEqual(id('tangent'))
+    expect(parse('xsin', group(row('t')))).toEqual(mul(id('xsin'), grp(id('t'))))
+  })
+
+  it('treats a whole-word symbol (a Greek letter) as its own identifier', () => {
     expect(parseRow([symbol('alpha')]).ast).toEqual(id('alpha'))
+    expect(parseRow([symbol('alpha'), ...row('x')]).ast).toEqual(mul(id('alpha'), id('x')))
   })
 
-  it('does not guess function names from letters', () => {
-    expect(parse('cos')).toEqual(mul(id('c'), id('o'), id('s')))
+  it('reports an underscore that does not follow a name', () => {
+    expect(parseRow(row('_')).diagnostics.map((d) => d.message)).toEqual(['Unexpected "_"'])
   })
 })
 

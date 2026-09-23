@@ -9,7 +9,6 @@ import {
   childRows,
   derivative,
   fraction,
-  func,
   group,
   root,
   row,
@@ -38,7 +37,8 @@ export const SAMPLES: readonly Sample[] = [
     id: 'sin-squared',
     label: 'sin(x)^2 = y',
     keys: ['sin(x)^2', ' ', '=y'],
-    build: () => row(func('sin'), group(row('x')), superscript(row('2')), '=y'),
+    // Typed letters: "sin" is three characters, read as the function.
+    build: () => row('sin', group(row('x')), superscript(row('2')), '=y'),
   },
   {
     id: 'power-over-sum',
@@ -72,7 +72,13 @@ export const SAMPLES: readonly Sample[] = [
     id: 'empty-slots',
     label: 'empty slots',
     keys: ['/', '{ArrowRight}', '{ArrowRight}', '+^', '{ArrowRight}', 'log(x,2)'],
-    build: () => row(fraction(), '+', superscript(), func('log'), group(row('x,2'))),
+    build: () => row(fraction(), '+', superscript(), 'log', group(row('x,2'))),
+  },
+  {
+    id: 'names',
+    label: 'Vm_init = 2Vm·cost',
+    keys: ['Vm_init=2Vm*cost'],
+    build: () => row('Vm_init=2Vm·cost'),
   },
   {
     id: 'bracket-power',
