@@ -27,7 +27,7 @@
 // Comparisons don't chain: in a < b < c the second one is reported (join them
 // with ∧), though the row is still parsed, left to right.
 //
-// Representation choices (see docs/cursor-refactor.md):
+// Representation choices (see docs/design.md):
 // - `a + b + c` is one flat Add; `a · b · c` is one flat Multiply.
 // - Subtraction is a left-associative binary `Subtract` chain:
 //   `a - b - c` -> Subtract(Subtract(a, b), c), `a + b - c` ->

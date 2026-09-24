@@ -1,4 +1,4 @@
-// Selection: an anchor plus the cursor (see docs/cursor-refactor.md).
+// Selection: an anchor plus the cursor (see docs/design.md).
 //
 // The anchor and cursor can be in different rows (e.g. a drag that starts in
 // a numerator and ends outside the fraction). The selection is always a range

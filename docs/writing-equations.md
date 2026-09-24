@@ -10,6 +10,8 @@ The editor never guesses silently. The rules below decide the meaning of everyth
 type, and the same input always means the same thing. If you know the rules, you can
 predict the output.
 
+For how the editor works inside, see [Equation editor design](design.md).
+
 ## The short version
 
 | You type | You get | Meaning |

@@ -1,4 +1,4 @@
-// Copy, cut and paste (see docs/cursor-refactor.md).
+// Copy, cut and paste (see docs/design.md).
 //
 // Copying puts two formats on the clipboard:
 // - CLIPBOARD_MIME: the selected layout atoms as JSON, so pasting inside the

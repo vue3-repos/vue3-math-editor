@@ -47,8 +47,8 @@ function label(c: Cursor): string {
   return path ? `${path}@${c.offset}` : `@${c.offset}`
 }
 
-// The equations from the review (docs/cursor-refactor.md) that the old
-// leaf-based caret could not fully traverse.
+// Equations the editor's original leaf-based caret could not fully traverse
+// (see History in docs/design.md).
 const reviewCases: Record<string, () => Row> = {
   'x + 1/2 + 3': () => row('x+', fraction(row('1'), row('2')), '+3'),
   'sin(x)^2 = y': () => row(func('sin'), group(row('x')), superscript(row('2')), '=y'),

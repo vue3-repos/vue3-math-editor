@@ -1,4 +1,4 @@
-// Editing commands over the layout tree (see docs/cursor-refactor.md).
+// Editing commands over the layout tree (see docs/design.md).
 //
 // Every command is a pure function EditorState -> EditorState. A command that
 // has nothing to do returns the *same* state object, so callers can tell a
