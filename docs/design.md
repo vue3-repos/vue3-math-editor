@@ -66,7 +66,7 @@ else drives where an edit lands.
 | `renderers/layoutLatex.ts` | Rows → tagged KaTeX LaTeX for the editing surface |
 | `renderers/mathjson.ts`, `renderers/mathml.ts` | `AstNode` → MathJSON, Content MathML |
 | `components/MathField.vue` | One editable equation: rendering, overlays, keyboard, mouse, clipboard events |
-| `components/EquationWorkbench.vue` | Lines, undo history, `\` command mode, toolbar, output panels |
+| `components/EquationWorkbench.vue` | Lines, undo history, `\` command mode, toolbar, output tabs, `side` slot |
 | `units/libcellml.ts` | The parts of libcellml.js the checker uses, typed structurally; releasing its objects |
 | `units/library.ts` | The units library: the user's CellML units files, keeping only their `<units>` |
 | `units/check.ts` | Checking a line's units with libCellML: prechecks, the check model, the analyser |
@@ -511,8 +511,10 @@ the tests.
 **The demo (done)** puts it together (`App.vue`). `main.ts` installs vue3-libcellml.js
 with a dynamic import, so with `?nolibcellml` the plugin is never loaded and the page
 runs as an application without it would. The `UnitsPanel` sits in the workbench's
-`below-editor` slot; the workbench's capture-phase key handling (`\` command mode,
-undo) ignores keys from that slot. Checking is `enabled` once a units file is loaded or a
+`side` slot, to the right of the editor (sticky), with the outputs in tabs under the
+editor (grid areas `editor side / outputs side`; without a side slot, `editor
+outputs`); the workbench's capture-phase key handling (`\` command mode, undo) ignores
+keys from that slot. The keyboard help is folded away under "Keys and typing". Checking is `enabled` once a units file is loaded or a
 variable has units; the Example button loads `demo/example-units.cellml` (ms, mV,
 µA/cm², …) and units for `dV/dt = -(I_ion - I_stim)/C_m`. The browser-test hook
 (`window.__workbench.setUnits`) replaces the checker's issues once used. The Vite

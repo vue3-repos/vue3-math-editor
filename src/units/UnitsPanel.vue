@@ -354,15 +354,21 @@ const stateLabel = { ok: '', missing: 'no units', unknown: 'unknown units' }
   width: 100%;
 }
 
-.variables td:nth-child(2) {
-  width: 16rem;
-}
-
 .variables th,
 .variables td {
   padding: 0.2rem 0.5rem 0.2rem 0;
   text-align: left;
   vertical-align: middle;
+}
+
+/* Names as wide as they need, then the units, then the state in what's left. */
+.variables th {
+  width: 1%;
+  padding-right: 1rem;
+}
+
+.variables td:nth-child(2) {
+  width: 16rem;
 }
 
 .variable-name {
@@ -399,7 +405,6 @@ const stateLabel = { ok: '', missing: 'no units', unknown: 'unknown units' }
 }
 
 .variable-state {
-  width: 1%;
   white-space: nowrap;
   font-size: 0.8rem;
   color: #b45309;

@@ -355,7 +355,7 @@ equation is still understood.
 
 ## Checking units
 
-Where the application checks units (the demo does, with libCellML), a Units panel under
+Where the application checks units (the demo does, with libCellML), a Units panel beside
 the equations lists every variable your equations use, with a box for its units:
 
 - **Units files.** Built-in units such as `second`, `metre`, `volt` and `dimensionless`
@@ -373,6 +373,10 @@ the equations lists every variable your equations use, with a box for its units:
   underline to read the problem.
 - A number is dimensionless unless it has units (`2{second}`); the otherwise 0.0 of a
   piecewise takes the first case's units, if that is a number with units.
+- The constants π, e, ∞, NaN, true and false are always dimensionless: CellML gives
+  units only to numbers and variables. For a constant with units, such as Faraday's
+  constant, write it as a number with units (`96485{C_per_mol}`), or as a variable
+  (`F`), which then gets its units in the panel like any other.
 
 Checking starts once a units file is loaded or a variable has units. In the demo,
 **Example** loads some electrophysiology units (ms, mV, µA/cm², …) and units for

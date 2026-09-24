@@ -26,6 +26,11 @@ import Button from 'primevue/button'
 import Card from 'primevue/card'
 import Divider from 'primevue/divider'
 import Menu from 'primevue/menu'
+import Tab from 'primevue/tab'
+import TabList from 'primevue/tablist'
+import TabPanel from 'primevue/tabpanel'
+import TabPanels from 'primevue/tabpanels'
+import Tabs from 'primevue/tabs'
 import Tag from 'primevue/tag'
 
 import MathField, { type Mark, type NavigationState } from './MathField.vue'
@@ -243,8 +248,8 @@ function handleCommandModeKey(event: KeyboardEvent) {
 }
 
 function handleCaptureKeydown(event: KeyboardEvent) {
-  // Keys in the host's content under the editor (its own inputs) are its own.
-  if ((event.target as Element | null)?.closest?.('[data-role="below-editor"]')) return
+  // Keys in the host's side content (its own inputs) are its own.
+  if ((event.target as Element | null)?.closest?.('[data-role="side"]')) return
 
   if (commandBuffer.value !== null) {
     handleCommandModeKey(event)
@@ -465,6 +470,8 @@ const selectionLabel = computed(() => {
 })
 
 const isCopyingMathJson = ref(false)
+// The output tab showing: Content MathML first, as the output that matters most.
+const outputTab = ref<'mathml' | 'mathjson' | 'latex' | 'ast'>('mathml')
 
 function fallbackCopyText(text: string): boolean {
   const textarea = document.createElement('textarea')
@@ -556,182 +563,186 @@ function toggleCopyMenu(event: Event) {
 </script>
 
 <template>
-  <section class="editor-grid" @keydown.capture="handleCaptureKeydown">
-    <div class="editor-column">
-      <Card class="editor-card">
-        <template #title>
-          <div class="header-row">
-            <span>Equation Builder</span>
-            <Tag severity="info" value="AST First" />
-          </div>
-        </template>
+  <section
+    class="editor-grid"
+    :class="{ 'has-side': !!$slots.side }"
+    @keydown.capture="handleCaptureKeydown"
+  >
+    <Card class="editor-card">
+      <template #title>
+        <div class="header-row">
+          <span>Equation Builder</span>
+          <Tag severity="info" value="AST First" />
+        </div>
+      </template>
 
-        <template #subtitle>
-          Type as you would write it; the structure is worked out as you go.
-        </template>
+      <template #subtitle>
+        Type as you would write it; the structure is worked out as you go.
+      </template>
 
-        <template #content>
-          <div class="toolbar">
-            <div class="toolbar-group">
-              <button
-                v-for="item in structureButtons"
-                :key="item.title"
-                type="button"
-                class="tool-button"
-                :title="item.title"
-                @mousedown.prevent
-                @click="run(item.command)"
-              >
-                <span v-html="buttonHtml(item.latex)"></span>
-              </button>
-            </div>
-
-            <div class="toolbar-group">
-              <button
-                v-for="item in operatorButtons"
-                :key="item.title"
-                type="button"
-                class="tool-button tool-button-op"
-                :title="item.title"
-                @mousedown.prevent
-                @click="run(item.command)"
-              >
-                <span v-html="buttonHtml(item.latex)"></span>
-              </button>
-            </div>
-
-            <div class="toolbar-group" data-role="constant-buttons">
-              <button
-                v-for="item in constantButtons"
-                :key="item.title"
-                type="button"
-                class="tool-button tool-button-op"
-                :title="item.title"
-                @mousedown.prevent
-                @click="run(item.command)"
-              >
-                <span v-html="buttonHtml(item.latex)"></span>
-              </button>
-            </div>
-
-            <div class="toolbar-group" data-role="condition-buttons">
-              <button
-                v-for="item in conditionButtons"
-                :key="item.title"
-                type="button"
-                class="tool-button tool-button-op"
-                :title="item.title"
-                @mousedown.prevent
-                @click="run(item.command)"
-              >
-                <span v-html="buttonHtml(item.latex)"></span>
-              </button>
-            </div>
-
-            <div class="toolbar-group">
-              <Button
-                icon="pi pi-undo"
-                size="small"
-                text
-                title="Undo (Ctrl+Z)"
-                :disabled="!canUndo"
-                @mousedown.prevent
-                @click="undo"
-              />
-              <Button
-                icon="pi pi-refresh"
-                size="small"
-                text
-                title="Redo (Ctrl+Shift+Z)"
-                :disabled="!canRedo"
-                @mousedown.prevent
-                @click="redo"
-              />
-              <Button
-                icon="pi pi-plus"
-                label="Line"
-                size="small"
-                text
-                title="Add equation line (Enter)"
-                @mousedown.prevent
-                @click="addLineAfterActive"
-              />
-              <Button
-                icon="pi pi-trash"
-                size="small"
-                text
-                severity="danger"
-                title="Remove equation line"
-                :disabled="equations.length <= 1"
-                @mousedown.prevent
-                @click="removeActiveLine"
-              />
-            </div>
-
-            <div class="toolbar-group">
-              <Button
-                icon="pi pi-copy"
-                :label="copyAsLabel"
-                size="small"
-                text
-                title="Copy the selection, or the whole equation, as LaTeX, MathJSON or Content MathML"
-                aria-haspopup="true"
-                aria-controls="copy-as-menu"
-                data-role="copy-as"
-                :disabled="!canCopyAs"
-                @mousedown.prevent
-                @click="toggleCopyMenu"
-              />
-              <Menu id="copy-as-menu" ref="copyMenu" :model="copyAsItems" :popup="true" />
-            </div>
-          </div>
-
-          <Divider />
-
-          <div class="equations-stack" @keydown="handleUnusedKey">
-            <div
-              v-for="(equation, index) in equations"
-              :key="lineIds[index]"
-              class="equation-row"
-              :class="{ active: index === activeIndex }"
-              :data-line="index"
-              :data-line-id="lineIds[index]"
-              @focusin="activeIndex = index"
+      <template #content>
+        <div class="toolbar">
+          <div class="toolbar-group">
+            <button
+              v-for="item in structureButtons"
+              :key="item.title"
+              type="button"
+              class="tool-button"
+              :title="item.title"
+              @mousedown.prevent
+              @click="run(item.command)"
             >
-              <div class="equation-label">{{ index + 1 }}</div>
-
-              <MathField
-                :ref="(el) => (fieldRefs[index] = el as InstanceType<typeof MathField> | null)"
-                class="equation-field"
-                :model-value="equation.root"
-                :cursor="equation.cursor"
-                :anchor="equation.anchor ?? null"
-                :active="index === activeIndex"
-                :marks="lineMarks[index]"
-                @navigate="handleNavigate(index, $event)"
-                @edit="(state, info) => handleEdit(index, state, info)"
-              />
-            </div>
+              <span v-html="buttonHtml(item.latex)"></span>
+            </button>
           </div>
 
-          <div v-if="commandBuffer !== null" class="command-chip" data-role="command">
-            <span class="command-slash">\</span>{{ commandBuffer
-            }}<span class="command-caret"></span>
+          <div class="toolbar-group">
+            <button
+              v-for="item in operatorButtons"
+              :key="item.title"
+              type="button"
+              class="tool-button tool-button-op"
+              :title="item.title"
+              @mousedown.prevent
+              @click="run(item.command)"
+            >
+              <span v-html="buttonHtml(item.latex)"></span>
+            </button>
           </div>
-          <p v-else class="focus-meta">
-            Cursor: <span data-role="cursor">{{ cursorLabel }}</span>
-            <template v-if="selectionLabel">
-              · Selection: <span data-role="selection">{{ selectionLabel }}</span>
-            </template>
-          </p>
 
-          <ul v-if="diagnostics.length" class="diagnostics" data-role="diagnostics">
-            <li v-for="(problem, index) in diagnostics" :key="index">{{ problem.message }}</li>
-          </ul>
-          <ul v-if="unitsIssues.length" class="diagnostics units-issues" data-role="units-issues">
-            <li v-for="(issue, index) in unitsIssues" :key="index">{{ issue.message }}</li>
-          </ul>
+          <div class="toolbar-group" data-role="constant-buttons">
+            <button
+              v-for="item in constantButtons"
+              :key="item.title"
+              type="button"
+              class="tool-button tool-button-op"
+              :title="item.title"
+              @mousedown.prevent
+              @click="run(item.command)"
+            >
+              <span v-html="buttonHtml(item.latex)"></span>
+            </button>
+          </div>
 
+          <div class="toolbar-group" data-role="condition-buttons">
+            <button
+              v-for="item in conditionButtons"
+              :key="item.title"
+              type="button"
+              class="tool-button tool-button-op"
+              :title="item.title"
+              @mousedown.prevent
+              @click="run(item.command)"
+            >
+              <span v-html="buttonHtml(item.latex)"></span>
+            </button>
+          </div>
+
+          <div class="toolbar-group">
+            <Button
+              icon="pi pi-undo"
+              size="small"
+              text
+              title="Undo (Ctrl+Z)"
+              :disabled="!canUndo"
+              @mousedown.prevent
+              @click="undo"
+            />
+            <Button
+              icon="pi pi-refresh"
+              size="small"
+              text
+              title="Redo (Ctrl+Shift+Z)"
+              :disabled="!canRedo"
+              @mousedown.prevent
+              @click="redo"
+            />
+            <Button
+              icon="pi pi-plus"
+              label="Line"
+              size="small"
+              text
+              title="Add equation line (Enter)"
+              @mousedown.prevent
+              @click="addLineAfterActive"
+            />
+            <Button
+              icon="pi pi-trash"
+              size="small"
+              text
+              severity="danger"
+              title="Remove equation line"
+              :disabled="equations.length <= 1"
+              @mousedown.prevent
+              @click="removeActiveLine"
+            />
+          </div>
+
+          <div class="toolbar-group">
+            <Button
+              icon="pi pi-copy"
+              :label="copyAsLabel"
+              size="small"
+              text
+              title="Copy the selection, or the whole equation, as LaTeX, MathJSON or Content MathML"
+              aria-haspopup="true"
+              aria-controls="copy-as-menu"
+              data-role="copy-as"
+              :disabled="!canCopyAs"
+              @mousedown.prevent
+              @click="toggleCopyMenu"
+            />
+            <Menu id="copy-as-menu" ref="copyMenu" :model="copyAsItems" :popup="true" />
+          </div>
+        </div>
+
+        <Divider />
+
+        <div class="equations-stack" @keydown="handleUnusedKey">
+          <div
+            v-for="(equation, index) in equations"
+            :key="lineIds[index]"
+            class="equation-row"
+            :class="{ active: index === activeIndex }"
+            :data-line="index"
+            :data-line-id="lineIds[index]"
+            @focusin="activeIndex = index"
+          >
+            <div class="equation-label">{{ index + 1 }}</div>
+
+            <MathField
+              :ref="(el) => (fieldRefs[index] = el as InstanceType<typeof MathField> | null)"
+              class="equation-field"
+              :model-value="equation.root"
+              :cursor="equation.cursor"
+              :anchor="equation.anchor ?? null"
+              :active="index === activeIndex"
+              :marks="lineMarks[index]"
+              @navigate="handleNavigate(index, $event)"
+              @edit="(state, info) => handleEdit(index, state, info)"
+            />
+          </div>
+        </div>
+
+        <div v-if="commandBuffer !== null" class="command-chip" data-role="command">
+          <span class="command-slash">\</span>{{ commandBuffer }}<span class="command-caret"></span>
+        </div>
+        <p v-else class="focus-meta">
+          Cursor: <span data-role="cursor">{{ cursorLabel }}</span>
+          <template v-if="selectionLabel">
+            · Selection: <span data-role="selection">{{ selectionLabel }}</span>
+          </template>
+        </p>
+
+        <ul v-if="diagnostics.length" class="diagnostics" data-role="diagnostics">
+          <li v-for="(problem, index) in diagnostics" :key="index">{{ problem.message }}</li>
+        </ul>
+        <ul v-if="unitsIssues.length" class="diagnostics units-issues" data-role="units-issues">
+          <li v-for="(issue, index) in unitsIssues" :key="index">{{ issue.message }}</li>
+        </ul>
+
+        <details class="key-help" data-role="key-help">
+          <summary>Keys and typing</summary>
           <p class="key-hint">
             <kbd>←</kbd><kbd>→</kbd> move through every position · <kbd>↑</kbd
             ><kbd>↓</kbd> numerator/denominator, else previous/next line · <kbd>Home</kbd
@@ -762,61 +773,59 @@ function toggleCopyMenu(event: Event) {
             >
             …) · <kbd>Backspace</kbd>/<kbd>Delete</kbd> delete · <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo
           </p>
-        </template>
-      </Card>
-
-      <!-- Under the editor, for the host: a units panel, for example. -->
-      <div v-if="$slots['below-editor']" class="below-editor" data-role="below-editor">
-        <slot name="below-editor" />
-      </div>
-    </div>
-
-    <Card class="output-card" aria-labelledby="ast-preview-title">
-      <template #title>
-        <div id="ast-preview-title">AST Preview</div>
-      </template>
-      <template #content>
-        <pre data-role="ast">{{ ast ? JSON.stringify(ast, null, 2) : '' }}</pre>
+        </details>
       </template>
     </Card>
 
-    <Card class="output-card" aria-labelledby="mathml-preview-title">
-      <template #title>
-        <div class="preview-title-row">
-          <div id="mathml-preview-title">Content MathML</div>
-          <Tag v-if="cellml" severity="secondary" value="CellML" data-role="cellml-mode" />
-        </div>
-      </template>
-      <template #content>
-        <pre data-role="mathml">{{ mathml }}</pre>
-      </template>
-    </Card>
+    <!-- The host's side content, beside the editor (a units panel, say); the
+         outputs then go under the editor. Without it, the outputs go beside. -->
+    <aside v-if="$slots.side" class="side-column" data-role="side">
+      <slot name="side" />
+    </aside>
 
-    <Card class="output-card" aria-labelledby="mathjson-preview-title">
-      <template #title>
-        <div class="preview-title-row">
-          <div id="mathjson-preview-title">MathJSON</div>
-          <Button
-            icon="pi pi-copy"
-            :label="isCopyingMathJson ? 'Copied' : 'Copy MathJSON'"
-            size="small"
-            outlined
-            :disabled="!mathjson"
-            @click="copyMathJson"
-          />
-        </div>
-      </template>
+    <Card class="output-card" data-role="outputs">
       <template #content>
-        <pre data-role="mathjson">{{ mathjson }}</pre>
-      </template>
-    </Card>
-
-    <Card class="output-card" aria-labelledby="latex-preview-title">
-      <template #title>
-        <div id="latex-preview-title">LaTeX</div>
-      </template>
-      <template #content>
-        <pre data-role="latex">{{ latex }}</pre>
+        <Tabs v-model:value="outputTab">
+          <TabList>
+            <Tab value="mathml" data-role="tab-mathml">
+              Content MathML
+              <Tag
+                v-if="cellml"
+                class="tab-tag"
+                severity="secondary"
+                value="CellML"
+                data-role="cellml-mode"
+              />
+            </Tab>
+            <Tab value="mathjson" data-role="tab-mathjson">MathJSON</Tab>
+            <Tab value="latex" data-role="tab-latex">LaTeX</Tab>
+            <Tab value="ast" data-role="tab-ast">AST</Tab>
+          </TabList>
+          <TabPanels>
+            <TabPanel value="mathml">
+              <pre data-role="mathml">{{ mathml }}</pre>
+            </TabPanel>
+            <TabPanel value="mathjson">
+              <div class="output-actions">
+                <Button
+                  icon="pi pi-copy"
+                  :label="isCopyingMathJson ? 'Copied' : 'Copy MathJSON'"
+                  size="small"
+                  text
+                  :disabled="!mathjson"
+                  @click="copyMathJson"
+                />
+              </div>
+              <pre data-role="mathjson">{{ mathjson }}</pre>
+            </TabPanel>
+            <TabPanel value="latex">
+              <pre data-role="latex">{{ latex }}</pre>
+            </TabPanel>
+            <TabPanel value="ast">
+              <pre data-role="ast">{{ ast ? JSON.stringify(ast, null, 2) : '' }}</pre>
+            </TabPanel>
+          </TabPanels>
+        </Tabs>
       </template>
     </Card>
   </section>
@@ -824,19 +833,39 @@ function toggleCopyMenu(event: Event) {
 
 <style scoped>
 .editor-grid {
-  max-width: 1100px;
+  max-width: 1240px;
   margin: 0 auto;
   display: grid;
   gap: 1rem;
   grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  grid-template-areas: 'editor outputs';
   align-items: start;
   outline: none;
 }
 
-.editor-column {
-  grid-row: span 3;
-  display: grid;
-  gap: 1rem;
+/* With side content: it takes the right, and the outputs go under the editor. */
+.editor-grid.has-side {
+  grid-template-rows: auto 1fr;
+  grid-template-areas:
+    'editor side'
+    'outputs side';
+}
+
+.editor-card {
+  grid-area: editor;
+  min-width: 0;
+}
+
+.output-card {
+  grid-area: outputs;
+  min-width: 0;
+}
+
+.side-column {
+  grid-area: side;
+  align-self: start;
+  position: sticky;
+  top: 1rem;
   min-width: 0;
 }
 
@@ -995,6 +1024,29 @@ function toggleCopyMenu(event: Event) {
   color: #9a3412;
 }
 
+.output-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.25rem;
+}
+
+.tab-tag {
+  margin-left: 0.4rem;
+  font-size: 0.7rem;
+  padding: 0.05rem 0.35rem;
+}
+
+.key-help {
+  margin-top: 0.75rem;
+}
+
+.key-help summary {
+  cursor: pointer;
+  width: fit-content;
+  color: #475569;
+  font-size: 0.85rem;
+}
+
 .key-hint {
   margin: 0.5rem 0 0;
   color: #64748b;
@@ -1022,6 +1074,7 @@ function toggleCopyMenu(event: Event) {
 
 .output-card pre {
   margin: 0;
+  max-height: 28rem;
   overflow: auto;
   border-radius: 0.55rem;
   background: #0f172a;
@@ -1032,12 +1085,15 @@ function toggleCopyMenu(event: Event) {
 }
 
 @media (max-width: 900px) {
-  .editor-grid {
-    grid-template-columns: 1fr;
+  .editor-grid,
+  .editor-grid.has-side {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    grid-template-areas: 'editor' 'side' 'outputs';
   }
 
-  .editor-column {
-    grid-row: auto;
+  .side-column {
+    position: static;
   }
 }
 </style>

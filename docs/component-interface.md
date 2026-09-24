@@ -27,9 +27,12 @@ Nothing here needs libCellML.
 
 ### Slot
 
-`below-editor` is shown under the equation editor, in the same column: the place for a
-units panel (see below). Keys typed in it are left alone by the workbench, so `\` and
-Ctrl+Z work there as in any input.
+`side` is shown beside the equation editor, on the right, and stays in view as the page
+scrolls: the place for a units panel (see below). With it, the outputs (Content MathML,
+MathJSON, LaTeX and the AST, in tabs, Content MathML first) go under the editor; without
+it, they go beside it. On a narrow screen everything stacks: editor, side, outputs. Keys
+typed in the side content are left alone by the workbench, so `\` and Ctrl+Z work there
+as in any input.
 
 ### Event
 
@@ -155,7 +158,7 @@ none; the demo checks once a units file is loaded or any variable has units.
 ### The units panel
 
 `UnitsPanel` (`src/units/UnitsPanel.vue`) is a ready-made panel for all this, meant for
-the workbench's `below-editor` slot. It shows the checker's status, loads units files
+the workbench's `side` slot. It shows the checker's status, loads units files
 (any CellML file; only its units are kept), lists each file's units and problems, and
 lists the variables the equations use, with an input for each one's units (suggesting
 the known units names, and marking missing and unknown units). It takes the checker's
@@ -165,7 +168,7 @@ workbench then shows on hover.
 
 ```vue
 <EquationWorkbench :issues="issues" :variable-units="variableUnits" @equations-change="lines = $event">
-  <template #below-editor>
+  <template #side>
     <UnitsPanel
       v-model:sources="sources"
       v-model:variable-units="variableUnits"

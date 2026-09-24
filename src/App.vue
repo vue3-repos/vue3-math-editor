@@ -89,7 +89,7 @@ Object.assign(window, {
       :variable-units="hintUnits"
       @equations-change="lines = $event"
     >
-      <template #below-editor>
+      <template #side>
         <UnitsPanel
           v-model:sources="sources"
           v-model:variable-units="variableUnits"
@@ -128,7 +128,7 @@ Object.assign(window, {
 }
 
 .hero {
-  max-width: 1100px;
+  max-width: 1240px;
   margin: 0 auto 1.25rem;
 }
 

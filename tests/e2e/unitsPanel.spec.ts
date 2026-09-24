@@ -136,6 +136,41 @@ test.describe('with libCellML', () => {
   })
 })
 
+test.describe('layout', () => {
+  test.beforeEach(async ({ page }) => {
+    wb = new Workbench(page)
+    await wb.goto()
+  })
+
+  const box = async (selector: string) => (await wb.page.locator(selector).boundingBox())!
+
+  test('the units panel is beside the editor, with the outputs in tabs under it', async () => {
+    const editor = await box('.editor-card')
+    const side = await box('[data-role="units-panel"]')
+    const outputs = await box('[data-role="outputs"]')
+    expect(side.x).toBeGreaterThanOrEqual(editor.x + editor.width)
+    expect(side.y).toBeCloseTo(editor.y, 0)
+    expect(outputs.y).toBeGreaterThanOrEqual(editor.y + editor.height)
+    expect(outputs.x).toBeCloseTo(editor.x, 0)
+
+    // Content MathML first; the others a click away.
+    await expect(wb.page.locator('[data-role="mathml"]')).toBeVisible()
+    await expect(wb.page.locator('[data-role="latex"]')).toBeHidden()
+    await wb.page.locator('[data-role="tab-latex"]').click()
+    await expect(wb.page.locator('[data-role="latex"]')).toBeVisible()
+    await expect(wb.page.locator('[data-role="mathml"]')).toBeHidden()
+  })
+
+  test('on a narrow screen: editor, units, then outputs', async () => {
+    await wb.page.setViewportSize({ width: 800, height: 900 })
+    const editor = await box('.editor-card')
+    const side = await box('[data-role="units-panel"]')
+    const outputs = await box('[data-role="outputs"]')
+    expect(side.y).toBeGreaterThanOrEqual(editor.y + editor.height)
+    expect(outputs.y).toBeGreaterThanOrEqual(side.y + side.height)
+  })
+})
+
 test.describe('without libCellML', () => {
   test.beforeEach(async ({ page }) => {
     wb = new Workbench(page)
