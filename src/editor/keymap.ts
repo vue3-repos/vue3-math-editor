@@ -13,11 +13,11 @@ import {
   insertFraction,
   insertSuperscript,
   insertUnits,
-  insertSymbol,
   newPiece,
   nextPlaceholder,
   openParen,
   typeEquals,
+  typeSymbol,
 } from './commands'
 import { KEY_SYMBOLS } from './operators'
 
@@ -41,7 +41,7 @@ export function commandForKey(event: KeyLike): Command | null {
 
   const text = typedText(event)
   if (text === '=') return typeEquals
-  if (text !== null) return insertSymbol(text)
+  if (text !== null) return typeSymbol(text)
 
   switch (key) {
     case '/':

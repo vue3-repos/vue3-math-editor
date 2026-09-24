@@ -9,6 +9,7 @@
 // All functions are pure and take/return the editor state shape
 // { root, cursor, anchor }.
 
+import { isUnits } from './numberUnits'
 import {
   type Cursor,
   cursorAtEnd,
@@ -107,7 +108,12 @@ export function extendSelection<S extends SelectableState>(
   let cursor: Cursor
 
   if (direction === 'forward' ? offset < row.length : offset > 0) {
-    cursor = { path, offset: offset + (direction === 'forward' ? 1 : -1) }
+    // A number's hidden units go with the atom before them.
+    const step = direction === 'forward' ? 1 : -1
+    let next = offset + step
+    if (direction === 'backward' && isUnits(row[offset - 1])) next = Math.max(0, offset - 2)
+    if (direction === 'forward' && isUnits(row[next])) next++
+    cursor = { path, offset: next }
   } else if (path.length > 0) {
     const owner = path[path.length - 1]
     cursor = {

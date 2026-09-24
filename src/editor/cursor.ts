@@ -15,6 +15,12 @@
 //
 // So pressing → from the start visits every position exactly once and ends
 // at the end of the equation, and ← retraces the same sequence backwards.
+//
+// A number's units (a units atom) are hidden (see numberUnits.ts), so they
+// are stepped over as one: neither their row nor the gap just before them is
+// a position. → from the end of 5 goes past its units; ← from after them goes
+// to before the 5's last digit. Once in them (with `{`), their row is moved
+// through as any other, and leaving it either way lands after them.
 // All functions are pure: they never mutate the tree or the cursor.
 
 import {
@@ -27,6 +33,7 @@ import {
   piecewiseBranch,
   rowPathsEqual,
 } from './layout'
+import { isUnits, settleCursor } from './numberUnits'
 
 export interface Cursor {
   path: RowPath
@@ -69,6 +76,7 @@ export function allPositions(root: Row): Cursor[] {
 
   const visit = (row: Row, path: RowPath) => {
     for (let offset = 0; offset <= row.length; offset++) {
+      if (isUnits(row[offset])) continue
       output.push({ path, offset })
 
       if (offset < row.length) {
@@ -129,13 +137,15 @@ export function moveRight(root: Row, cursor: Cursor): Cursor | null {
 
   if (cursor.offset < row.length) {
     const atom = row[cursor.offset]
-    const children = childRows(atom)
+    const children = isUnits(atom) ? [] : childRows(atom)
 
     if (children.length > 0) {
       return { path: [...cursor.path, { atom: cursor.offset, branch: children[0][0] }], offset: 0 }
     }
 
-    return { path: cursor.path, offset: cursor.offset + 1 }
+    // Past the atom, and past the units after it.
+    const offset = cursor.offset + (isUnits(row[cursor.offset + 1]) ? 2 : 1)
+    return { path: cursor.path, offset }
   }
 
   const parent = parentOf(root, cursor.path)
@@ -161,6 +171,8 @@ export function moveLeft(root: Row, cursor: Cursor): Cursor | null {
 
   if (cursor.offset > 0) {
     const atomIndex = cursor.offset - 1
+    // Over the units, and on over the atom before them.
+    if (isUnits(row[atomIndex])) return moveLeft(root, { path: cursor.path, offset: atomIndex })
     const children = childRows(row[atomIndex])
 
     if (children.length > 0) {
@@ -185,6 +197,9 @@ export function moveLeft(root: Row, cursor: Cursor): Cursor | null {
     const [branch, child] = previous
     return { path: [...parent.rowPath, { atom: parent.atomIndex, branch }], offset: child.length }
   }
+
+  // Out of a number's units: after them (the gap before them isn't a position).
+  if (isUnits(parent.atom)) return { path: parent.rowPath, offset: parent.atomIndex + 1 }
 
   return { path: parent.rowPath, offset: parent.atomIndex }
 }
@@ -253,7 +268,7 @@ function moveVertical(
     const target = requireRow(root, targetPath)
     const offset = Math.max(0, Math.min(target.length, pickOffset(target, targetPath, cursor)))
 
-    return { path: targetPath, offset }
+    return settleCursor(root, { path: targetPath, offset })
   }
 
   return null

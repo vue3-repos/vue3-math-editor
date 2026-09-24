@@ -123,11 +123,43 @@ test('variable and number units show on hover, without underlines', async () => 
   await expect(wb.markTip()).toHaveText('2: s')
 })
 
-test('a number’s units are typed in braces and drawn after it', async () => {
+test('a number’s units show while typed, then hide, showing on hover', async () => {
   await wb.type('k=0.25{per_s')
   await expect(wb.cursor()).toHaveText('6.units @ 5')
+  await expect(wb.line(0).locator('.me-units')).toHaveText('per_s')
+
   await wb.type('}')
   await expect(wb.cursor()).toHaveText('root @ 7')
-  await expect(wb.line(0).locator('.me-units')).toHaveText('per_s')
+  await expect(wb.line(0).locator('.me-units')).toHaveCount(0)
   await wb.expectMathJson(['Equal', 'k', 0.25])
+  expect((await lines())[0].mathml).toContain('<cn cellml:units="per_s">0.25</cn>')
+
+  const number = await wb.atomBox(0, 'r', 5)
+  await wb.page.mouse.move((number.left + number.right) / 2, (number.top + number.bottom) / 2)
+  await expect(wb.markTip()).toHaveText('0.25: per_s')
+})
+
+test('{ opens hidden units again to change them', async () => {
+  await wb.type('V=5{volt}+x')
+  await wb.press('ArrowLeft', 2)
+  await expect(wb.cursor()).toHaveText('root @ 4')
+  await wb.type('{')
+  await expect(wb.line(0).locator('.me-units')).toHaveText('volt')
+  await expect(wb.selection(0)).toBeVisible()
+  await wb.type('ampere ')
+  await expect(wb.line(0).locator('.me-units')).toHaveCount(0)
+  expect((await lines())[0].mathml).toContain('<cn cellml:units="ampere">5</cn>')
+})
+
+test('units a problem is about stay in view', async () => {
+  await wb.type('x=2{furlong}')
+  await setUnits({
+    issues: [
+      { lineId: 'line-1', message: 'No units called furlong are defined', units: ['furlong'] },
+    ],
+  })
+  await expect(wb.line(0).locator('.me-units')).toHaveText('furlong')
+  await setUnits({ issues: [{ lineId: 'line-1', message: '2 is dimensionless', numbers: [2] }] })
+  await expect(wb.line(0).locator('.me-units')).toHaveCount(0)
+  await expect(unitsMarks()).toHaveCount(1)
 })

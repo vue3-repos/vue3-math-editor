@@ -43,6 +43,7 @@ import { commandForKey, typedText } from '../editor/keymap'
 import { type Row, getRow } from '../editor/layout'
 import { type Mark, type MarkKind, isProblem, markKind } from '../editor/marks'
 import { isExponentSignPosition } from '../editor/numbers'
+import { isUnits, openUnitsId } from '../editor/numberUnits'
 import {
   collapseSelection,
   extendSelection,
@@ -101,9 +102,21 @@ function state(): EditorState {
 
 const selection = computed(() => selectionOf(state()))
 
+// A number's units are drawn only while being edited, or when a problem
+// underlines them (editor/numberUnits.ts); otherwise they show on hover.
+const shownUnits = computed(() => {
+  const ids = new Set(props.marks.filter(isProblem).flatMap((mark) => mark.atomIds))
+  const open = props.active ? openUnitsId(props.modelValue, props.cursor) : null
+  if (open) ids.add(open)
+  return ids
+})
+
 const html = computed(() =>
   katex.renderToString(
-    rowToLatex(props.modelValue, { activeRow: props.active ? props.cursor.path : null }),
+    rowToLatex(props.modelValue, {
+      activeRow: props.active ? props.cursor.path : null,
+      shownUnits: shownUnits.value,
+    }),
     KATEX_EDITOR_OPTIONS,
   ),
 )
@@ -312,11 +325,13 @@ function editInfo(event: KeyboardEvent, current: EditorState): EditInfo {
 
   if (text !== null) {
     const row = getRow(current.root, current.cursor.path)
+    // At the end of a number with hidden units, typing goes before the units.
+    const offset = current.cursor.offset - (isUnits(row?.[current.cursor.offset - 1]) ? 1 : 0)
     const exponentSign =
       !replacedSelection &&
       (text === '-' || text === '+') &&
       !!row &&
-      isExponentSignPosition(row, current.cursor.offset)
+      isExponentSignPosition(row, offset)
     return { kind: 'type', text, replacedSelection, exponentSign }
   }
   if (event.key === 'Backspace') return { kind: 'deleteBackward', replacedSelection }

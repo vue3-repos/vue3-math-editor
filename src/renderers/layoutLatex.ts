@@ -21,6 +21,9 @@ export interface LayoutLatexOptions {
   // Row the cursor is in. If it is empty, its placeholder gets the
   // `me-ph-active` class.
   activeRow?: RowPath | null
+  // The units atoms to draw (by id). A number's units are hidden unless they
+  // are being edited or have a problem (editor/numberUnits.ts).
+  shownUnits?: ReadonlySet<string>
 }
 
 // ---------------------------------------------------------------------------
@@ -256,7 +259,8 @@ function renderAtom(
       )
 
     case 'units':
-      // A thin space, then the units name upright and grey: 0.25 mV.
+      // Hidden, or a thin space then the units name upright and grey: 0.25 mV.
+      if (!options.shownUnits?.has(atom.id)) return ''
       return tag(atom.id, `\\,${renderUnitsRow(atom.units, childPath('units'), options)}`)
 
     case 'piecewise': {

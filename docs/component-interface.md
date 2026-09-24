@@ -23,7 +23,7 @@ Nothing here needs libCellML.
 |---|---|---|---|
 | `cellml` | `boolean` | `false` | CellML mode for the Content MathML the user sees and copies: the CellML namespace is declared on `<math>`, and every number carries `cellml:units`. |
 | `issues` | `UnitsIssue[]` | `[]` | Units problems to show. Each is underlined in amber on its line and listed under the equations when that line is active; the message shows on hover. |
-| `variableUnits` | `Record<string, string>` | none | Each variable's units by name, shown on hover ("Vm: millivolt"). When given, numbers also show their units on hover ("0.25: dimensionless"). |
+| `variableUnits` | `Record<string, string>` | none | Each variable's units by name, shown on hover ("Vm: millivolt"). When given, numbers without units also show theirs on hover ("2: dimensionless"); numbers with units always do ("0.25: mV"). |
 
 ### Slot
 
@@ -75,8 +75,10 @@ The types are exported from `src/editor/units.ts`.
 ## Number units
 
 Numbers are dimensionless unless the user gives them units, typed in braces straight after
-the number: `0.25{mV}`, `1e-3{per_s}`. The units name is shown upright and grey after the
-number. See [Writing equations](writing-equations.md).
+the number: `0.25{mV}`, `1e-3{per_s}`. The units show while being typed, then are hidden:
+pointing at the number shows them ("0.25: mV"), and they are always in the line's MathML.
+Units an issue names (`units` in a `UnitsIssue`) are shown, underlined; an issue naming a
+number by value underlines only the number. See [Writing equations](writing-equations.md).
 
 ## Connecting a units checker
 

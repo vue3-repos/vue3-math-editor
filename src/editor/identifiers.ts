@@ -183,6 +183,8 @@ export interface NumberOccurrence {
   value: number
   // The number's atoms, and its units atom if it has one.
   atomIds: string[]
+  // The number's atoms only.
+  digitIds: string[]
   // The name in its units atom, if it has one, or the units a default
   // otherwise value takes from the first piece.
   units: string | null
@@ -201,10 +203,12 @@ export function numberOccurrences(root: Row): NumberOccurrence[] {
       const unitsAtom = after?.kind === 'units' ? after : null
       const atoms = row.slice(run.start, run.end + (unitsAtom ? 1 : 0))
       const atomIds = atoms.map((a) => a.id)
+      const digitIds = row.slice(run.start, run.end).map((a) => a.id)
       const value = Number(run.text)
-      if (unitsAtom) found.push({ value, atomIds, units: unitsName(unitsAtom) })
-      else if (inherited) found.push({ value, atomIds, units: inherited, inherited: true })
-      else found.push({ value, atomIds, units: null })
+      if (unitsAtom) found.push({ value, atomIds, digitIds, units: unitsName(unitsAtom) })
+      else if (inherited) {
+        found.push({ value, atomIds, digitIds, units: inherited, inherited: true })
+      } else found.push({ value, atomIds, digitIds, units: null })
     }
     for (const atom of row) {
       if (atom.kind === 'units') continue

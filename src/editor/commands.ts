@@ -43,7 +43,9 @@ import {
   GREEK_NAMES,
   bracketFunctionBefore,
   functionForSpelling,
+  numberRuns,
 } from './identifiers'
+import { continuesNumber, inUnits, isUnits } from './numberUnits'
 import { constantForCommand } from './constants'
 import { combinedWithEquals, conditionOperatorForCommand } from './operators'
 import { getFunctionDefinition } from '../registry/nodes'
@@ -541,9 +543,51 @@ export const openParen: Command = (state) => {
   return bracketsRound('(')(state)
 }
 
-// "{" (or \units): a units atom at the cursor, for the number just before
-// it, with the cursor inside to type the units name: 0.25{mV}.
-export const insertUnits: Command = (state) => insertStructure(unitsAtom(), 'units')(state)
+// "{" (or \units): units for the number just before the cursor, with the
+// cursor inside to type their name: 0.25{mV}. At the end of a number that has
+// units already, it opens them instead, their name selected, to change them.
+// Elsewhere (no number before the cursor, or already in units), nothing.
+export const insertUnits: Command = (state) => {
+  if (inUnits(state.cursor)) return state
+  const { path, offset } = state.cursor
+  const row = requireRow(state.root, path)
+
+  const before = row[offset - 1]
+  if (!selectionOf(state) && before?.kind === 'units') {
+    const inside = [...path, { atom: offset - 1, branch: 'units' as const }]
+    return {
+      root: state.root,
+      cursor: { path: inside, offset: before.units.length },
+      anchor: before.units.length ? { path: inside, offset: 0 } : null,
+    }
+  }
+
+  const collapsed = clearSelection(state)
+  const at = collapsed.cursor.offset
+  const here = requireRow(collapsed.root, collapsed.cursor.path)
+  const number = numberRuns(here.slice(0, at)).find((run) => run.end === at)
+  if (!number) return state
+  return insertStructure(unitsAtom(), 'units')(collapsed)
+}
+
+// A typed character: at the end of a number whose units are hidden, one that
+// continues the number goes before the units (5{volt}, then 0, is 50{volt};
+// then + goes after them).
+export function typeSymbol(value: string): Command {
+  return (current) => {
+    const { path, offset } = current.cursor
+    const row = requireRow(current.root, path)
+
+    if (
+      !selectionOf(current) &&
+      isUnits(row[offset - 1]) &&
+      continuesNumber(row, offset - 1, value)
+    ) {
+      return splice(current, path, offset - 1, 0, [symbol(value)], { path, offset: offset + 1 })
+    }
+    return insertSymbol(value)(current)
+  }
+}
 
 // "}": leave the units atom the cursor is in (at any depth). Elsewhere,
 // nothing.
@@ -589,6 +633,7 @@ export const exitStructure: Command = (state) => {
 // ---------------------------------------------------------------------------
 
 // Backspace.
+// - After a number's (hidden) units: the number's last digit.
 // - After a symbol: delete it.
 // - After a function: remove its last letter ("sin" -> "si"), so a
 //   recognised name can be undone letter by letter.
@@ -606,6 +651,14 @@ export const deleteBackward: Command = (state) => {
   if (offset > 0) {
     const atom = current[offset - 1]
     const start = offset - 1
+
+    // After a number's hidden units: the number's last digit. The units stay
+    // (for a new number) until the cursor leaves them (numberUnits.ts).
+    if (atom.kind === 'units') {
+      return current[start - 1]?.kind === 'symbol'
+        ? splice(state, path, start - 1, 1, [], { path, offset: start })
+        : splice(state, path, start, 1, [], { path, offset: start })
+    }
 
     if (atom.kind === 'symbol') {
       return splice(state, path, start, 1, [], { path, offset: start })

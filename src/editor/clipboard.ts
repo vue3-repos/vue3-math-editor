@@ -251,12 +251,10 @@ function atomLatex(atom: Atom, previous: Atom | undefined): string {
     }
     case 'derivative':
       return `\\frac{\\mathrm{d}${rowToLatexSource(atom.expr)}}{\\mathrm{d}${rowToLatexSource(atom.variable)}}`
-    case 'units': {
-      // A thin space and the name upright: 0.25\,\mathrm{mV}, which pastes
-      // back as units.
-      const name = atom.units.map((a) => (a.kind === 'symbol' ? a.value : '')).join('')
-      return `\\,\\mathrm{${name.replace(/_/g, '\\_')}}`
-    }
+    case 'units':
+      // Left out, as on screen: a number's units are hidden (numberUnits.ts).
+      // The editor's own clipboard format keeps them.
+      return ''
     case 'piecewise': {
       const lines = atom.pieces.map(
         ({ value, condition }) => `${rowToLatexSource(value)} & ${rowToLatexSource(condition)}`,
@@ -618,7 +616,8 @@ class LatexReader {
   }
 
   private readCommand(name: string, atoms: Row): void {
-    // 0.25\,\mathrm{mV}: a number's units, as copying writes them.
+    // 0.25\,\mathrm{mV}: a number's units (copying no longer writes them, but
+    // LaTeX from elsewhere, or from earlier, may).
     const next = this.peek()
     if (
       name === ',' &&

@@ -55,10 +55,12 @@ describe('unitsIssueMarks', () => {
     expect(marks[0].message).toContain('metre_per_second')
   })
 
-  it('underlines numbers by value, with their units', () => {
+  it('underlines numbers by value (the number only), or by units (with its units)', () => {
     const root = typed('x=t+2{mV}+3')
-    const [mark] = unitsIssueMarks(root, [{ lineId: 'line-1', message: 'm', numbers: [2] }])
-    expect(mark.atomIds).toHaveLength(2) // the digit and its units atom
+    const [byValue] = unitsIssueMarks(root, [{ lineId: 'line-1', message: 'm', numbers: [2] }])
+    expect(byValue.atomIds).toHaveLength(1) // the digit: the hidden units stay hidden
+    const [byUnits] = unitsIssueMarks(root, [{ lineId: 'line-1', message: 'm', units: ['mV'] }])
+    expect(byUnits.atomIds).toHaveLength(2) // the digit and its units atom, shown
   })
 
   it('underlines nothing for names that are not in the line', () => {
@@ -69,6 +71,10 @@ describe('unitsIssueMarks', () => {
 })
 
 describe('unitsHintMarks', () => {
+  it('explains numbers with units even without variable units', () => {
+    expect(unitsHintMarks(typed('x=2{mV}+3'), null).map((m) => m.message)).toEqual(['2: mV'])
+  })
+
   it('explains each variable’s units and each number’s units on hover', () => {
     const marks = unitsHintMarks(typed('Vm=2*Vm+0.5{mV}'), { Vm: 'millivolt' })
     expect(marks.map((m) => m.message)).toEqual([

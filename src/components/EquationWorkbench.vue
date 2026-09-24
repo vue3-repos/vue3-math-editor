@@ -63,6 +63,7 @@ import {
   unitsIssueMarks,
 } from '../editor/units'
 import type { Row } from '../editor/layout'
+import { settleState } from '../editor/numberUnits'
 import { parseRow } from '../editor/parse'
 import { describeSelection, selectedAtoms, selectionOf } from '../editor/selection'
 import { renderMathJson } from '../renderers/mathjson'
@@ -98,8 +99,10 @@ function active(): EditorState {
   return equations.value[activeIndex.value]
 }
 
+// Every state is settled first: no cursor before a number's hidden units, and
+// units no longer wanted removed (editor/numberUnits.ts).
 function setEquation(index: number, state: EditorState) {
-  equations.value[index] = state
+  equations.value[index] = settleState(state)
 }
 
 function focusActive() {
@@ -422,7 +425,7 @@ const lineMarks = computed(() =>
       marks = [
         ...(parsedLines.value[index]?.diagnostics ?? []),
         ...unitsIssueMarks(root, issuesByLine.value.get(lineIds.value[index]) ?? []),
-        ...(props.variableUnits ? unitsHintMarks(root, props.variableUnits) : []),
+        ...unitsHintMarks(root, props.variableUnits ?? null),
       ]
       marksCache.value.set(root, marks)
     }

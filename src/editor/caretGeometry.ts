@@ -117,8 +117,14 @@ export function gapGeometry(
       : null
   }
 
-  const before = row[offset - 1]
-  const after = row[offset]
+  // Atoms that aren't drawn (a number's hidden units) are passed over.
+  const drawn = (atom: Atom | undefined) => !!atom && !!atomElement(container, atom)
+  let b = offset - 1
+  while (b >= 0 && !drawn(row[b]) && row[b].kind === 'units') b--
+  let a = offset
+  while (a < row.length && !drawn(row[a]) && row[a].kind === 'units') a++
+  const before = row[b]
+  const after = row[a]
   const beforeBox = atomBounds(container, before)
   const afterBox = atomBounds(container, after)
 

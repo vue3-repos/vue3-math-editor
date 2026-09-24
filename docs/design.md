@@ -55,6 +55,7 @@ else drives where an edit lands.
 | `editor/parse.ts` | Rows → `AstNode`, with diagnostics |
 | `editor/identifiers.ts` | Which runs of characters are names, and which are functions |
 | `editor/numbers.ts` | Which runs of characters are numbers, including scientific notation |
+| `editor/numberUnits.ts` | A number's hidden units: settling the cursor, what typing continues, tidying |
 | `editor/operators.ts` | Comparison and logical operators |
 | `editor/constants.ts` | π, e, ∞, NaN, true, false |
 | `editor/marks.ts` | Marks: underlines (parse errors, units issues) and hover hints |
@@ -152,16 +153,36 @@ these notes cover how they are implemented.
   (`0.0000001`) is written the same way, since a `type="real"` `<cn>` can't hold an
   exponent. MathJSON writes the number (`1e-8`). LaTeX is `1\mathrm{e}{-08}`.
 - **Units:** a `UnitsAtom` straight after a number gives it units: `0.25{mV}`. Its row
-  holds the units name typed as characters, so the cursor and editing work as in any
-  structure; it is drawn upright and grey after a thin space (`me-units`), and its
-  characters are never names or operators (`nameOccurrences` skips it). The parser attaches
-  it to the number before it (`Number.units`); units anywhere else, or an empty or invalid
-  name (not a CellML identifier), are diagnostics. A number without units is
-  dimensionless: CellML mode writes `cellml:units="dimensionless"` (`DEFAULT_NUMBER_UNITS`).
-  Typed with `{` (or `\units`), left with `}` or Space; Backspace at the start of the units
-  steps out rather than dissolving them, since the name would become a variable. LaTeX is
-  `0.25\,\mathrm{mV}`, and pasting reads that, `0.25{mV}` and CellML Text's
-  `0.25 {units: mV}`. MathJSON has the number only.
+  holds the units name typed as characters; its characters are never names or operators
+  (`nameOccurrences` skips it). The parser attaches it to the number before it
+  (`Number.units`); units anywhere else, or an empty or invalid name (not a CellML
+  identifier), are diagnostics. A number without units is dimensionless: CellML mode
+  writes `cellml:units="dimensionless"` (`DEFAULT_NUMBER_UNITS`). MathJSON has the number
+  only; LaTeX (copying, and the LaTeX tab) leaves the units out, as on screen, but pasting
+  still reads `0.25\,\mathrm{mV}`, `0.25{mV}` and CellML Text's `0.25 {units: mV}`.
+- **Hidden units** (`editor/numberUnits.ts`). The units are for the Content MathML, not the
+  reader, so they are drawn (upright and grey after a thin space, `me-units`) only while
+  the cursor is in them or a problem mark covers them: MathField passes those ids as
+  `shownUnits` to `rowToLatex`, which otherwise draws nothing for them. Hover hints show
+  every number's units (`unitsHintMarks`, even without variable units). So that hidden
+  units never hide the caret:
+  - The gap just before a units atom isn't a position: `settleState` moves the cursor (and
+    anchor) after them, and `moveLeft`/`moveRight`/`allPositions`/`extendSelection` step
+    over number and units together without entering the units. Leaving the units row
+    either way lands after them. `gapGeometry` passes over undrawn units.
+  - At the end of a number with units, `typeSymbol` puts what continues the number
+    (digits, a point, an exponent and its sign) before the units; anything else goes after.
+    `deleteBackward` there deletes the number's last digit.
+  - `{` there reopens the units with the name selected; `{` with no number before the
+    cursor does nothing (so no stray units are made).
+  - `settleState` also removes units left empty once the cursor is out of them, and units
+    left without a number once the cursor is neither in them nor just after them (so
+    Backspacing a number away and typing a new one keeps its units). The workbench
+    applies it to every state it stores (`setEquation`); the unit tests' `press` does the
+    same. A removal on a cursor move isn't an undo step.
+  - An issue that names a number by value underlines only its digits (`digitIds`), so the
+    units stay hidden; one that names units (undefined units) underlines them too, which
+    shows them.
 
 ### Conditions
 
@@ -553,6 +574,9 @@ Findings from trying libcellml.js 0.7.1 on the editor's output:
 
 ## Open questions
 
+- **A marker for numbers with units.** Their units are hidden, so 5 and 5 volt look alike
+  (hover tells them apart). To try: a small blue triangle in the corner of a number that
+  has units.
 - **The otherwise default with an expression first.** A default 0.0 takes the units of a
   first piece that is a number with units, but not of one that is an expression, whose
   units only the checker knows. The checker could say which units it needs.

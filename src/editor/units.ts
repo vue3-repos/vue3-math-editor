@@ -125,12 +125,14 @@ export function unitsIssueMarks(root: Row, issues: readonly UnitsIssue[]): Mark[
         marks.push({ message: issue.message, atomIds, kind: 'units' })
       }
     }
-    const underlined = numbers.filter(
-      (n) =>
-        issue.numbers?.includes(n.value) || (n.units !== null && issue.units?.includes(n.units)),
-    )
-    for (const number of underlined) {
-      marks.push({ message: issue.message, atomIds: number.atomIds, kind: 'units' })
+    // A number named by its units (undefined units, say) is underlined with
+    // its units, which the underline then reveals; by value, only the number.
+    for (const number of numbers) {
+      if (!number.inherited && number.units !== null && issue.units?.includes(number.units)) {
+        marks.push({ message: issue.message, atomIds: number.atomIds, kind: 'units' })
+      } else if (issue.numbers?.includes(number.value)) {
+        marks.push({ message: issue.message, atomIds: number.digitIds, kind: 'units' })
+      }
     }
   }
 
@@ -138,17 +140,20 @@ export function unitsIssueMarks(root: Row, issues: readonly UnitsIssue[]): Mark[
 }
 
 // Hover hints for one line: each variable's units ("Vm: millivolt") where
-// known, and each number's units ("0.25: dimensionless").
-export function unitsHintMarks(root: Row, variableUnits: VariableUnits): Mark[] {
+// known, and each number's units ("0.25: mV"). A number's units are hidden, so
+// its hint is always there; without `variableUnits` (no units checking),
+// numbers without units aren't explained.
+export function unitsHintMarks(root: Row, variableUnits: VariableUnits | null): Mark[] {
   const marks: Mark[] = []
 
-  for (const [name, units] of Object.entries(variableUnits)) {
+  for (const [name, units] of Object.entries(variableUnits ?? {})) {
     for (const atomIds of nameOccurrences(root, name)) {
       marks.push({ message: `${name}: ${units}`, atomIds, kind: 'hint' })
     }
   }
 
   for (const number of numberOccurrences(root)) {
+    if (!number.units && !variableUnits) continue
     const from = number.inherited ? ', as in the first piece' : ''
     marks.push({
       message: `${number.value}: ${number.units || DEFAULT_NUMBER_UNITS}${from}`,

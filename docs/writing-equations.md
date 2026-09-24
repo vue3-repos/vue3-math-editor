@@ -52,15 +52,30 @@ Something like `1.2.3` is reported as a malformed number under the equation.
 
 A number is dimensionless unless you give it units. Type the units name in braces straight
 after the number: `0.25{mV}`, `1e-3{per_s}`. Typing `{` after a number opens the units
-with the caret inside; `}` or Space leaves them. The name is shown upright and grey after
-the number (0.25 mV), and is a units name, not a variable. It must be a valid CellML name:
-letters, digits and underscores, not starting with a digit. Units anywhere but straight
-after a number, or an empty or invalid name, are marked as a problem.
+with the caret inside, shown upright and grey (0.25 mV); `}` or Space leaves them. The
+name is a units name, not a variable, and must be a valid CellML name: letters, digits
+and underscores, not starting with a digit.
+
+Once you leave them, **the units are hidden**: the equation shows 0.25, and pointing at
+the number shows its units ("0.25: mV"). They stay with the number:
+
+- The caret moves past them as if they weren't there. At the end of the number, digits
+  (and a point, or an exponent) still extend it: `5{volt}` then `0` is 50 volt, while
+  `+` goes after it.
+- To change them, put the caret at the end of the number and type `{`: they open with the
+  name selected, so typing replaces it. Empty them and leave to remove them.
+- Backspace at the end of the number deletes its digits, not the units. With every digit
+  gone the units wait there for a new number (type `6` and it's 6 volt), and go if you
+  move away. Selecting the number selects its units too, so deleting or copying it takes
+  them along.
+- Units with a problem (an invalid name, or units the checker doesn't know) stay in view,
+  underlined, until they're fixed.
 
 The units go into Content MathML in CellML mode (`<cn cellml:units="mV">0.25</cn>`);
 numbers without units are written `cellml:units="dimensionless"`. Copied as LaTeX they are
-`0.25\,\mathrm{mV}`, which pastes back as units, and pasted plain text such as
-`0.25{mV}` or CellML Text's `0.25 {units: mV}` is read as units too.
+left out, as on screen (copy and paste within the editor keeps them). Pasted LaTeX such
+as `0.25\,\mathrm{mV}`, or plain text such as `0.25{mV}` or CellML Text's
+`0.25 {units: mV}`, is read as units.
 
 Whether the units make sense in the equation is checked outside the editor, if the
 application provides a units checker; problems it finds are underlined in amber. See
