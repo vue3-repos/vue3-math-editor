@@ -456,6 +456,16 @@ With a selection:
   `\left|x\right|`, …) or **plain maths as you would type it** (`y = (x+1)/2 + sin(x)^2`),
   read with the same rules as typing. In pasted text, `a/b` always makes a fraction,
   and a LaTeX subscript keeps its underscore: `x_{12}` becomes the name `x_12`.
+- Pasting **Content MathML** (from a CellML model, say: a `<math>` element, or a bare
+  `<apply>`) imports it. One equation or expression goes in at the caret like any paste;
+  several (a `<math>` holding several `<apply><eq/>…`) **replace every line**, one
+  equation per line; Ctrl/Cmd+Z undoes either in one step. The maths is written as you
+  would have typed it, with brackets only where they're needed. A number's `cellml:units`
+  become its (hidden) units, from CellML 2.0 or 1.x; `dimensionless` is left off, as
+  it's the default. Variables' units aren't in the maths, so give them again in the
+  Units panel. Anything the editor can't write (an element outside CellML's MathML, a
+  second derivative) is left as an empty slot, and a note under the equations says what
+  was left out.
 - **Copy as** in the toolbar copies the selection, or the whole equation, as **LaTeX**,
   **MathJSON** or **Content MathML**. A selection is exported on its own, so selecting
   `a+b` in `y=a+b` gives just `a+b`.

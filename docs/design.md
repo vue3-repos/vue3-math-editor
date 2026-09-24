@@ -409,6 +409,37 @@ focused, non-editable `div`, so no hidden text area is needed.
     step).
 - `rowToLatexSource` and `latexToRow` round-trip every atom kind (unit-tested).
 
+### Importing Content MathML
+
+`editor/mathmlImport.ts` is the inverse of the Content MathML export. `MathField`'s paste
+checks `looksLikeContentMathML` (text starting with `<math>`, `<apply>`, `<piecewise>`,
+`<ci>` or `<cn>`, after an XML declaration or comments) before LaTeX, and emits `import`
+with `importContentMathML`'s `{ equations, problems }`; the workbench puts one equation
+in at the caret (`insertAtoms`, an ordinary paste) and replaces every line with several
+(one undo step), and shows a dismissable note (`import-notice`) when there were several
+or anything was left out.
+
+- The text is parsed with `DOMParser` inside a wrapper declaring the MathML and CellML 2.0
+  namespaces, so fragments and undeclared `cellml:` prefixes read; elements are matched
+  by local name, and `units` by local name with a `cellml` prefix or a cellml.org
+  namespace (CellML 1.0, 1.1 and 2.0).
+- Each child of each `<math>` is one equation, built as rows: `<divide>` a fraction,
+  `<power>` a superscript, `<root>` (with `<degree>`), `<abs>`, floor and ceiling brackets,
+  functions (a function atom and bracketed arguments; `<log>` with `<logbase>` as
+  `log(x, b)`), `<diff>` a derivative, `<piecewise>`, constants, relations and logic.
+  `<cn>` keeps its text (e-notation as `1.5e-3`); a negative number is a minus and the
+  number; `cellml:units` other than dimensionless give a units atom.
+- Brackets: each result carries how loosely it binds (the parser's levels: or, xor, and,
+  not, comparison, additive, unary, term, primary) and an operand looser than its place
+  allows is bracketed: `(a+b)·c`, `a-(b-c)`, `a·(-b)`, `(-x)^2`. Two exceptions keep
+  CellML's common forms readable: `a+-b`, and a negative first factor (`-0.1·x`, which
+  reads as −(0.1·x), the same value).
+- Unsupported elements (and a derivative of order other than 1) become an empty bracket
+  slot with a problem; a variable named like a function (`max`) is reported, since it
+  reads as the function.
+- Tested by round trip: every kind of typed equation, exported in CellML mode and read
+  back, exports identically.
+
 ## Exports
 
 A "Copy as" menu in the workbench toolbar offers the three formats in `editor/exports.ts`.

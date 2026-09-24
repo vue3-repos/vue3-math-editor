@@ -17,7 +17,8 @@
 //
 // Copy, cut and paste use the browser's clipboard events (so the system
 // shortcuts and menus work): copying writes the selection as the editor's own
-// format plus LaTeX text; pasting reads either (editor/clipboard.ts).
+// format plus LaTeX text; pasting reads either (editor/clipboard.ts), and
+// pasted Content MathML is handed to the parent as an `import`.
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import katex from 'katex'
 
@@ -40,6 +41,11 @@ import { type EditorState, deleteBackward, insertAtoms } from '../editor/command
 import { type Cursor, type PickOffset, cursorAtEnd, cursorAtStart } from '../editor/cursor'
 import { type EditInfo, OTHER_EDIT } from '../editor/history'
 import { commandForKey, typedText } from '../editor/keymap'
+import {
+  type MathMLImport,
+  importContentMathML,
+  looksLikeContentMathML,
+} from '../editor/mathmlImport'
 import { type Row, getRow } from '../editor/layout'
 import { type Mark, type MarkKind, isProblem, markKind } from '../editor/marks'
 import { isExponentSignPosition } from '../editor/numbers'
@@ -81,6 +87,8 @@ const props = withDefaults(
 const emit = defineEmits<{
   navigate: [state: NavigationState]
   edit: [state: EditorState, info: EditInfo]
+  // Content MathML was pasted (editor/mathmlImport.ts).
+  import: [result: MathMLImport]
 }>()
 
 const surfaceEl = ref<HTMLElement | null>(null)
@@ -414,9 +422,23 @@ function handlePaste(event: ClipboardEvent) {
   event.preventDefault()
 
   const data = event.clipboardData
-  const atoms =
-    deserializeAtoms(data.getData(CLIPBOARD_MIME)) ?? latexToRow(data.getData('text/plain'))
+  const own = deserializeAtoms(data.getData(CLIPBOARD_MIME))
+  const text = data.getData('text/plain')
 
+  // Content MathML (from a CellML model, say) is imported; the parent decides
+  // where its equations go.
+  if (!own && looksLikeContentMathML(text)) {
+    emit(
+      'import',
+      importContentMathML(text) ?? {
+        equations: [],
+        problems: ["The pasted MathML isn't well-formed XML, so nothing was imported"],
+      },
+    )
+    return
+  }
+
+  const atoms = own ?? latexToRow(text)
   if (atoms.length > 0) emit('edit', insertAtoms(atoms)(state()), OTHER_EDIT)
 }
 

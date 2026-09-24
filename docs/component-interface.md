@@ -72,6 +72,17 @@ underlined.
 
 The types are exported from `src/editor/units.ts`.
 
+## Importing Content MathML
+
+Pasting Content MathML into an equation imports it (see [Writing
+equations](writing-equations.md)): one equation at the caret, or several replacing every
+line, with numbers' `cellml:units` kept. Each imported line is reported through
+`equations-change` like any other, so a units checker sees it straight away; variables'
+units aren't part of the maths and are given as usual. The reader is
+`importContentMathML(text)` in `src/editor/mathmlImport.ts`, returning `{ equations,
+problems }` (rows ready for the editor), for a host that wants to import without the
+clipboard.
+
 ## Number units
 
 Numbers are dimensionless unless the user gives them units, typed in braces straight after

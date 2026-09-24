@@ -39,6 +39,7 @@ import {
   type EditorState,
   emptyState,
   insertAbs,
+  insertAtoms,
   insertCeiling,
   insertFloor,
   insertDerivative,
@@ -63,6 +64,7 @@ import {
   unitsIssueMarks,
 } from '../editor/units'
 import type { Row } from '../editor/layout'
+import type { MathMLImport } from '../editor/mathmlImport'
 import { settleState } from '../editor/numberUnits'
 import { parseRow } from '../editor/parse'
 import { describeSelection, selectedAtoms, selectionOf } from '../editor/selection'
@@ -175,6 +177,40 @@ function handleEdit(index: number, next: EditorState, info: EditInfo) {
 function handleNavigate(index: number, { cursor, anchor }: NavigationState) {
   history.breakGroup()
   setEquation(index, { ...equations.value[index], cursor, anchor })
+}
+
+// Pasted Content MathML: one equation (or expression) goes in at the caret,
+// like any paste; several replace every line, one line each, as opening them
+// would. Either way it is one undo step, and what couldn't be read is listed.
+const importNotice = ref<{ message: string; problems: string[] } | null>(null)
+
+function handleImport(index: number, result: MathMLImport) {
+  const count = result.equations.length
+
+  if (count === 1) {
+    handleEdit(index, insertAtoms(result.equations[0])(equations.value[index]), OTHER_EDIT)
+  } else if (count > 1) {
+    pushHistory(index)
+    equations.value = result.equations.map((root) =>
+      settleState({ root, cursor: cursorAtEnd(root), anchor: null }),
+    )
+    lineIds.value = result.equations.map(() => newLineId())
+    activeIndex.value = 0
+    focusActive()
+  }
+
+  importNotice.value =
+    count > 1 || result.problems.length
+      ? {
+          message:
+            count > 1
+              ? `Imported ${count} equations from Content MathML, replacing the lines there were.`
+              : count === 1
+                ? 'Imported the equation from Content MathML.'
+                : 'Nothing was imported.',
+          problems: result.problems,
+        }
+      : null
 }
 
 // Run a command on the active line (toolbar buttons, command mode).
@@ -723,6 +759,7 @@ function toggleCopyMenu(event: Event) {
               :marks="lineMarks[index]"
               @navigate="handleNavigate(index, $event)"
               @edit="(state, info) => handleEdit(index, state, info)"
+              @import="handleImport(index, $event)"
             />
           </div>
         </div>
@@ -740,6 +777,24 @@ function toggleCopyMenu(event: Event) {
         <ul v-if="diagnostics.length" class="diagnostics" data-role="diagnostics">
           <li v-for="(problem, index) in diagnostics" :key="index">{{ problem.message }}</li>
         </ul>
+        <div v-if="importNotice" class="import-notice" data-role="import-notice">
+          <div class="import-notice-head">
+            <span>{{ importNotice.message }}</span>
+            <Button
+              icon="pi pi-times"
+              size="small"
+              text
+              rounded
+              severity="secondary"
+              aria-label="Dismiss"
+              @mousedown.prevent
+              @click="importNotice = null"
+            />
+          </div>
+          <ul v-if="importNotice.problems.length">
+            <li v-for="problem in importNotice.problems" :key="problem">{{ problem }}</li>
+          </ul>
+        </div>
         <ul v-if="unitsIssues.length" class="diagnostics units-issues" data-role="units-issues">
           <li v-for="(issue, index) in unitsIssues" :key="index">{{ issue.message }}</li>
         </ul>
@@ -1020,6 +1075,28 @@ function toggleCopyMenu(event: Event) {
   background: #fef3c7;
   color: #92400e;
   font-size: 0.8rem;
+}
+
+.import-notice {
+  margin: 0.5rem 0 0;
+  padding: 0.35rem 0.6rem;
+  border-radius: 0.5rem;
+  background: #eff6ff;
+  color: #1e3a8a;
+  font-size: 0.8rem;
+}
+
+.import-notice-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.import-notice ul {
+  margin: 0.2rem 0 0.1rem;
+  padding-left: 1.1rem;
+  color: #9a3412;
 }
 
 .units-issues {
