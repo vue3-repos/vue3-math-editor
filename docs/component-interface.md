@@ -45,7 +45,7 @@ interface EquationLine {
   mathml: string      // Content MathML in CellML mode, whatever the `cellml` prop
   variables: string[] // variable names used, in order of first use
   units: string[]     // units names given to numbers (dimensionless is not listed)
-  complete: boolean   // not empty, no parse problems, no empty slots: ready to check
+  complete: boolean   // not empty, no parse problems, no empty slots, no units being typed
 }
 ```
 
@@ -75,8 +75,9 @@ The types are exported from `src/editor/units.ts`.
 ## Number units
 
 Numbers are dimensionless unless the user gives them units, typed in braces straight after
-the number: `0.25{mV}`, `1e-3{per_s}`. The units show while being typed, then are hidden:
-pointing at the number shows them ("0.25: mV"), and they are always in the line's MathML.
+the number: `0.25{mV}`, `1e-3{per_s}`. The units show (light blue) while being typed, then
+are hidden, leaving a very small light-blue triangle on the number: pointing at it shows
+them ("0.25: mV"), and they are always in the line's MathML.
 Units an issue names (`units` in a `UnitsIssue`) are shown, underlined; an issue naming a
 number by value underlines only the number. See [Writing equations](writing-equations.md).
 

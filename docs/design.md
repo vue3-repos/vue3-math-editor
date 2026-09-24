@@ -161,9 +161,14 @@ these notes cover how they are implemented.
   only; LaTeX (copying, and the LaTeX tab) leaves the units out, as on screen, but pasting
   still reads `0.25\,\mathrm{mV}`, `0.25{mV}` and CellML Text's `0.25 {units: mV}`.
 - **Hidden units** (`editor/numberUnits.ts`). The units are for the Content MathML, not the
-  reader, so they are drawn (upright and grey after a thin space, `me-units`) only while
-  the cursor is in them or a problem mark covers them: MathField passes those ids as
-  `shownUnits` to `rowToLatex`, which otherwise draws nothing for them. Hover hints show
+  reader, so they are drawn (upright and light blue after a thin space, `me-units`) only
+  while the cursor is in them or a problem mark covers them: MathField passes those ids
+  as `shownUnits` to `rowToLatex`. Otherwise it draws only `\htmlClass{me-units-flag}{}`,
+  a zero-width span whose `::after` is a very small light-blue triangle in the number's
+  top right corner; it carries no `data-atom`, so caret geometry passes it by. Empty units
+  (being typed) are a slot of their own kind, `me-units-ph`: a dashed light-blue box
+  labelled "units", unlike the `\square` of other empty rows, and not a diagnostic; the
+  line isn't `complete` meanwhile. Hover hints show
   every number's units (`unitsHintMarks`, even without variable units). So that hidden
   units never hide the caret:
   - The gap just before a units atom isn't a position: `settleState` moves the cursor (and
@@ -172,12 +177,12 @@ these notes cover how they are implemented.
     either way lands after them. `gapGeometry` passes over undrawn units.
   - At the end of a number with units, `typeSymbol` puts what continues the number
     (digits, a point, an exponent and its sign) before the units; anything else goes after.
-    `deleteBackward` there deletes the number's last digit.
+    `deleteBackward` there deletes the number's last digit, and with the last one the
+    units (no memory of them for the next number).
   - `{` there reopens the units with the name selected; `{` with no number before the
     cursor does nothing (so no stray units are made).
   - `settleState` also removes units left empty once the cursor is out of them, and units
-    left without a number once the cursor is neither in them nor just after them (so
-    Backspacing a number away and typing a new one keeps its units). The workbench
+    left without a number (or one being typed: `1e-` counts) straight away. The workbench
     applies it to every state it stores (`setEquation`); the unit tests' `press` does the
     same. A removal on a cursor move isn't an undo step.
   - An issue that names a number by value underlines only its digits (`digitIds`), so the
@@ -574,9 +579,6 @@ Findings from trying libcellml.js 0.7.1 on the editor's output:
 
 ## Open questions
 
-- **A marker for numbers with units.** Their units are hidden, so 5 and 5 volt look alike
-  (hover tells them apart). To try: a small blue triangle in the corner of a number that
-  has units.
 - **The otherwise default with an expression first.** A default 0.0 takes the units of a
   first piece that is a number with units, but not of one that is an expression, whose
   units only the checker knows. The checker could say which units it needs.

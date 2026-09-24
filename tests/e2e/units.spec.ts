@@ -124,13 +124,21 @@ test('variable and number units show on hover, without underlines', async () => 
 })
 
 test('a number’s units show while typed, then hide, showing on hover', async () => {
-  await wb.type('k=0.25{per_s')
+  await wb.type('k=0.25{')
+  // An empty units slot of its own kind, labelled "units".
+  await expect(wb.line(0).locator('.me-units-ph')).toHaveText('units')
+  await expect(wb.marks()).toHaveCount(0) // still being typed: not a problem
+  await wb.type('per_s')
   await expect(wb.cursor()).toHaveText('6.units @ 5')
   await expect(wb.line(0).locator('.me-units')).toHaveText('per_s')
 
+  await expect(wb.line(0).locator('.me-units')).toHaveCSS('color', 'rgb(96, 165, 250)')
+  await expect(wb.line(0).locator('.me-units-flag')).toHaveCount(0)
   await wb.type('}')
   await expect(wb.cursor()).toHaveText('root @ 7')
   await expect(wb.line(0).locator('.me-units')).toHaveCount(0)
+  // Hidden: a small triangle says the number has units.
+  await expect(wb.line(0).locator('.me-units-flag')).toHaveCount(1)
   await wb.expectMathJson(['Equal', 'k', 0.25])
   expect((await lines())[0].mathml).toContain('<cn cellml:units="per_s">0.25</cn>')
 
@@ -149,6 +157,12 @@ test('{ opens hidden units again to change them', async () => {
   await wb.type('ampere ')
   await expect(wb.line(0).locator('.me-units')).toHaveCount(0)
   expect((await lines())[0].mathml).toContain('<cn cellml:units="ampere">5</cn>')
+
+  // Deleting the number's last digit takes its units with it.
+  await wb.press('Backspace')
+  await expect(wb.line(0).locator('.me-units-flag')).toHaveCount(0)
+  await wb.type('6')
+  expect((await lines())[0].mathml).toContain('<cn cellml:units="dimensionless">6</cn>')
 })
 
 test('units a problem is about stay in view', async () => {

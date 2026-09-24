@@ -45,7 +45,7 @@ import {
   functionForSpelling,
   numberRuns,
 } from './identifiers'
-import { continuesNumber, inUnits, isUnits } from './numberUnits'
+import { continuesNumber, followsNumber, inUnits, isUnits } from './numberUnits'
 import { constantForCommand } from './constants'
 import { combinedWithEquals, conditionOperatorForCommand } from './operators'
 import { getFunctionDefinition } from '../registry/nodes'
@@ -633,7 +633,8 @@ export const exitStructure: Command = (state) => {
 // ---------------------------------------------------------------------------
 
 // Backspace.
-// - After a number's (hidden) units: the number's last digit.
+// - After a number's (hidden) units: the number's last digit (with the last
+//   one, the units go too).
 // - After a symbol: delete it.
 // - After a function: remove its last letter ("sin" -> "si"), so a
 //   recognised name can be undone letter by letter.
@@ -652,12 +653,16 @@ export const deleteBackward: Command = (state) => {
     const atom = current[offset - 1]
     const start = offset - 1
 
-    // After a number's hidden units: the number's last digit. The units stay
-    // (for a new number) until the cursor leaves them (numberUnits.ts).
+    // After a number's hidden units: the number's last digit, and with the
+    // number's last digit, its units too.
     if (atom.kind === 'units') {
-      return current[start - 1]?.kind === 'symbol'
+      if (current[start - 1]?.kind !== 'symbol') {
+        return splice(state, path, start, 1, [], { path, offset: start })
+      }
+      const shorter = [...current.slice(0, start - 1), ...current.slice(start)]
+      return followsNumber(shorter, start - 1)
         ? splice(state, path, start - 1, 1, [], { path, offset: start })
-        : splice(state, path, start, 1, [], { path, offset: start })
+        : splice(state, path, start - 1, 2, [], { path, offset: start - 1 })
     }
 
     if (atom.kind === 'symbol') {

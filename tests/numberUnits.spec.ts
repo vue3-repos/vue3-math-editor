@@ -90,15 +90,15 @@ describe('hidden units', () => {
     expect(show(press(opened, 'ampere}'))).toBe('5{ampere}‸+x')
   })
 
-  it('Backspace after them deletes the number’s digits, not the units', () => {
+  it('Backspace after them deletes the number’s digits, and with the last one the units', () => {
     expect(show(press(type('25{volt}'), 'Backspace'))).toBe('2{volt}‸')
-    // Once the number is gone the units wait for a new one while the caret
-    // stays there…
-    const gone = press(type('x+5{volt}'), 'Backspace')
-    expect(show(gone)).toBe('x+{volt}‸')
-    expect(show(press(gone, '6'))).toBe('x+6{volt}‸')
-    // …and go when it leaves.
-    expect(show(press(gone, 'ArrowLeft'))).toBe('x‸+')
+    expect(show(press(type('x+5{volt}'), 'Backspace'))).toBe('x+‸')
+    expect(show(press(type('x+5{volt}'), 'Backspace', '6'))).toBe('x+6‸') // no memory of them
+    expect(show(press(type('x+.5{volt}'), 'Backspace', 'Backspace'))).toBe('x+‸')
+  })
+
+  it('go when their number is deleted some other way', () => {
+    expect(show(press(type('x+5{volt}'), 'ArrowLeft', 'Delete'))).toBe('x+‸')
   })
 
   it('units left empty go when the cursor leaves them', () => {
@@ -129,7 +129,7 @@ describe('parsing units', () => {
     expect(messages([...row('x'), unitsAtom(row('mV'))])).toEqual([
       'Units belong straight after a number',
     ])
-    expect(messages(typed('2{'))).toEqual(['Missing units name'])
+    expect(messages(typed('2{'))).toEqual([]) // still being typed, not a problem
     expect(messages(typed('2{m+V}'))).toEqual(['"m+V" isn\'t a units name'])
   })
 
@@ -183,9 +183,10 @@ describe('exporting units', () => {
 })
 
 describe('rendering units', () => {
-  it('draws nothing for hidden units', () => {
+  it('draws only a flag for hidden units', () => {
     const atoms = [...row('0.25'), unitsAtom(row('mV'))]
-    expect(rowToLatex(atoms)).not.toContain('me-units')
+    expect(rowToLatex(atoms)).not.toContain('\\htmlClass{me-units}')
+    expect(rowToLatex(atoms)).toContain('\\htmlClass{me-units-flag}{}') // the triangle
     expect(rowToLatex(atoms)).not.toContain('{\\mathrm{m}}')
   })
 

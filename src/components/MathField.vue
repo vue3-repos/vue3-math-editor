@@ -519,9 +519,40 @@ defineExpose({ focus: () => surfaceEl.value?.focus() })
     rgba(217, 119, 6, 0.1);
 }
 
-/* A number's units: upright and grey after it. */
+/* A number's units, while shown: upright and light blue after it. */
 .math-field :deep(.me-units) {
-  color: #64748b;
+  color: #60a5fa;
+}
+
+/* An empty units slot, labelled "units": dashed and light blue, unlike the
+   box of an empty fraction or exponent. */
+.math-field :deep(.me-ph.me-units-ph) {
+  padding: 0 0.15em;
+  border: 1px dashed #60a5fa;
+  border-radius: 3px;
+  color: #60a5fa;
+}
+
+.math-field.focused :deep(.me-units-ph.me-ph-active) {
+  color: #3b82f6;
+  background: rgba(96, 165, 250, 0.12);
+}
+
+/* Hidden units: a very small triangle in the number's top right corner. */
+.math-field :deep(.me-units-flag) {
+  position: relative;
+  display: inline-block;
+  width: 0;
+  height: 0;
+}
+
+.math-field :deep(.me-units-flag)::after {
+  content: '';
+  position: absolute;
+  right: -0.05em;
+  bottom: 0.52em;
+  border-top: 0.22em solid #60a5fa;
+  border-left: 0.22em solid transparent;
 }
 
 .mark-tip {

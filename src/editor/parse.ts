@@ -411,17 +411,18 @@ class Parser {
   }
 
   // The name in a units atom, or null (with a diagnostic) if it isn't a valid
-  // CellML identifier.
+  // CellML identifier. Empty units are still being typed (they are removed if
+  // left empty), so they aren't a problem; the line isn't complete meanwhile
+  // (editor/units.ts).
   private unitsName(token: Token & { kind: 'structure' }): string | null {
     const atom = token.atom as StructureAtom & { kind: 'units' }
     const text = atom.units.map((a) => (a.kind === 'symbol' ? a.value : '?')).join('')
 
     if (UNITS_NAME.test(text)) return text
 
-    this.diagnostics.push({
-      message: text ? `"${text}" isn't a units name` : 'Missing units name',
-      atomIds: token.atomIds,
-    })
+    if (text) {
+      this.diagnostics.push({ message: `"${text}" isn't a units name`, atomIds: token.atomIds })
+    }
     return null
   }
 

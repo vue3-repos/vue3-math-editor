@@ -29,6 +29,7 @@ describe('equationLine', () => {
 
   it('is incomplete with an empty slot or a parse problem, or when empty', () => {
     expect(line('x+').complete).toBe(false)
+    expect(line('x=2{').complete).toBe(false) // units still being typed
     expect(line('x=1,2').complete).toBe(false)
     expect(line('')).toEqual({
       id: 'line-1',

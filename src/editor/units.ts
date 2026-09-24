@@ -8,7 +8,7 @@
 
 import { contentMathML } from './exports'
 import { nameOccurrences, numberOccurrences } from './identifiers'
-import type { Row } from './layout'
+import { type Row, childRows } from './layout'
 import type { Mark } from './marks'
 import type { ParseResult } from './parse'
 import { DEFAULT_NUMBER_UNITS } from '../renderers/mathml'
@@ -25,8 +25,8 @@ export interface EquationLine {
   variables: string[]
   // Units names given to numbers (without the default dimensionless).
   units: string[]
-  // Whether the line is ready to check: not empty, no parse problems and no
-  // empty slots.
+  // Whether the line is ready to check: not empty, no parse problems, no
+  // empty slots and no units still being typed.
   complete: boolean
 }
 
@@ -65,8 +65,17 @@ export function equationLine(id: string, root: Row, parsed: ParseResult | null):
     mathml: contentMathML(root, { cellml: true }),
     variables,
     units,
-    complete: parsed.diagnostics.length === 0 && placeholders === 0,
+    complete: parsed.diagnostics.length === 0 && placeholders === 0 && !hasEmptyUnits(root),
   }
+}
+
+// Units still being typed: an empty units atom anywhere in the equation.
+function hasEmptyUnits(row: Row): boolean {
+  return row.some(
+    (atom) =>
+      (atom.kind === 'units' && atom.units.length === 0) ||
+      childRows(atom).some(([, child]) => hasEmptyUnits(child)),
+  )
 }
 
 function childNodes(node: AstNode): AstNode[] {

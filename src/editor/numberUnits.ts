@@ -9,10 +9,10 @@
 // - movement steps over units without entering them (cursor.ts);
 // - at the end of a number with units, characters that continue the number
 //   go before the units (5{volt} then 0 gives 50{volt}), and Backspace deletes
-//   the number's last digit (commands.ts);
+//   the number's last digit, and with the last one its units (commands.ts);
 // - `{` there opens the units, their name selected, to change them;
-// - units left empty, or left behind when their number is deleted, are
-//   removed once the cursor leaves them.
+// - units left empty are removed once the cursor leaves them, and units left
+//   without a number (the number deleted some other way) straight away.
 
 import type { Cursor } from './cursor'
 import { continuesName } from './identifiers'
@@ -39,13 +39,6 @@ export function openUnitsId(root: Row, cursor: Cursor): string | null {
 const symbolValue = (atom: Atom | undefined) => (atom?.kind === 'symbol' ? atom.value : null)
 const isDigit = (value: string | null) => value !== null && value >= '0' && value <= '9'
 
-// A units atom follows a number: the atom before it is a digit or a decimal
-// point.
-export const followsNumber = (row: Row, index: number): boolean => {
-  const value = symbolValue(row[index - 1])
-  return isDigit(value) || value === '.'
-}
-
 // The number written just before `end` in `row`, as far as it goes (digits, a
 // point, an exponent and its sign): "", or null when what's there is a name
 // ending in digits (x2).
@@ -68,6 +61,12 @@ function numberTextBefore(row: Row, end: number): string | null {
 // Written as far as a number can be: 12, 1.5, .5, 1e, 1e-, 1e-3.
 const NUMBER_SO_FAR = /^(\d+\.?\d*|\.\d*)([eE][+-]?\d*)?$/
 
+// A units atom follows a number, or one being typed (1e- on the way to 1e-3).
+export function followsNumber(row: Row, index: number): boolean {
+  const before = numberTextBefore(row, index)
+  return !!before && NUMBER_SO_FAR.test(before)
+}
+
 // Whether typing `text` at the end of the number before the units atom at
 // `unitsIndex` continues that number.
 export function continuesNumber(row: Row, unitsIndex: number, text: string): boolean {
@@ -88,9 +87,9 @@ interface EditorLike {
 }
 
 // The state with no cursor before hidden units, and without the units that
-// are no longer wanted: those left empty, and those left behind by their
-// number, unless the cursor is still in them or (for the latter) just after
-// them, ready for a new number. Returns the same state when nothing changes.
+// are no longer wanted: those left empty (unless the cursor is in them, typing
+// their name), and those left without a number. Returns the same state when
+// nothing changes.
 export function settleState<S extends EditorLike>(state: S): S {
   const cursor = settleCursor(state.root, state.cursor)
   const anchor = state.anchor ? settleCursor(state.root, state.anchor) : state.anchor
@@ -113,7 +112,6 @@ const key = (path: RowPath) => path.map((s) => `${s.atom}.${s.branch}`).join('/'
 
 function tidyRow(row: Row, path: RowPath, cursor: Cursor, removed: Map<string, number[]>): Row {
   const here = key(path)
-  const cursorHere = key(cursor.path) === here
   const gone: number[] = []
   let changed = false
 
@@ -123,9 +121,7 @@ function tidyRow(row: Row, path: RowPath, cursor: Cursor, removed: Map<string, n
         cursor.path.length > path.length &&
         key(cursor.path.slice(0, path.length)) === here &&
         cursor.path[path.length].atom === index
-      const justAfter = cursorHere && cursor.offset === index + 1
-      const unwanted =
-        atom.units.length === 0 ? !inside : !followsNumber(row, index) && !inside && !justAfter
+      const unwanted = atom.units.length === 0 ? !inside : !followsNumber(row, index) && !inside
 
       if (unwanted) {
         gone.push(index)

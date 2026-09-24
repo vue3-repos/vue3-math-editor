@@ -51,23 +51,24 @@ Something like `1.2.3` is reported as a malformed number under the equation.
 ### Units of a number
 
 A number is dimensionless unless you give it units. Type the units name in braces straight
-after the number: `0.25{mV}`, `1e-3{per_s}`. Typing `{` after a number opens the units
-with the caret inside, shown upright and grey (0.25 mV); `}` or Space leaves them. The
-name is a units name, not a variable, and must be a valid CellML name: letters, digits
-and underscores, not starting with a digit.
+after the number: `0.25{mV}`, `1e-3{per_s}`. Typing `{` after a number opens an empty
+units slot, a dashed light-blue box labelled "units" (unlike the grey box of an empty
+fraction or exponent); the name you type is shown upright in light blue (0.25 mV); `}`
+or Space leaves the units. The name is a units name, not a variable, and must be a valid
+CellML name: letters, digits and underscores, not starting with a digit.
 
-Once you leave them, **the units are hidden**: the equation shows 0.25, and pointing at
-the number shows its units ("0.25: mV"). They stay with the number:
+Once you leave them, **the units are hidden**: the equation shows 0.25 with a very small
+light-blue triangle in the number's top corner to say it has units, and pointing at the
+number shows them ("0.25: mV"). They stay with the number:
 
 - The caret moves past them as if they weren't there. At the end of the number, digits
   (and a point, or an exponent) still extend it: `5{volt}` then `0` is 50 volt, while
   `+` goes after it.
 - To change them, put the caret at the end of the number and type `{`: they open with the
   name selected, so typing replaces it. Empty them and leave to remove them.
-- Backspace at the end of the number deletes its digits, not the units. With every digit
-  gone the units wait there for a new number (type `6` and it's 6 volt), and go if you
-  move away. Selecting the number selects its units too, so deleting or copying it takes
-  them along.
+- Backspace at the end of the number deletes its digits; deleting the last digit (or
+  the whole number) deletes the units too, so a new number starts without any. Selecting
+  the number selects its units too, so deleting or copying it takes them along.
 - Units with a problem (an invalid name, or units the checker doesn't know) stay in view,
   underlined, until they're fixed.
 

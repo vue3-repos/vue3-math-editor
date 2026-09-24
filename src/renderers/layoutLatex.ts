@@ -259,8 +259,11 @@ function renderAtom(
       )
 
     case 'units':
-      // Hidden, or a thin space then the units name upright and grey: 0.25 mV.
-      if (!options.shownUnits?.has(atom.id)) return ''
+      // Hidden: only a small flag (me-units-flag, a triangle in the number's
+      // top corner) says the number has units. It has no data-atom, so the
+      // caret passes it by. Shown: a thin space, then the units name upright
+      // and light blue: 0.25 mV.
+      if (!options.shownUnits?.has(atom.id)) return '\\htmlClass{me-units-flag}{}'
       return tag(atom.id, `\\,${renderUnitsRow(atom.units, childPath('units'), options)}`)
 
     case 'piecewise': {
@@ -281,7 +284,14 @@ function renderAtom(
 // A number's units row: each character upright (\mathrm), not read as names
 // or operators, in the me-units class (grey).
 function renderUnitsRow(row: Row, path: RowPath, options: LayoutLatexOptions): string {
-  if (row.length === 0) return renderRow(row, path, options)
+  // Empty: a slot of its own kind (me-units-ph), labelled "units", rather
+  // than the box of an empty fraction or exponent, to prompt for a units
+  // name.
+  if (row.length === 0) {
+    const active = options.activeRow && rowPathsEqual(options.activeRow, path)
+    const classes = `me-ph me-units-ph${active ? ' me-ph-active' : ''}`
+    return `\\htmlData{row=${encodeRowPath(path)}}{\\htmlClass{${classes}}{\\text{\\scriptsize units}}}`
+  }
 
   const glyphs = row.map((atom, index) => {
     const childPath = (branch: RowPathSegment['branch']): RowPath => [
