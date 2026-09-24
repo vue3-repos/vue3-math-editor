@@ -9,7 +9,8 @@
 // a second-order derivative, …) becomes an empty slot, and is reported.
 
 import { CONSTANTS } from './constants'
-import { GREEK_NAMES, functionForSpelling } from './identifiers'
+import { functionForSpelling, reservedConstant } from './identifiers'
+import { nameAtoms } from './names'
 import {
   type Atom,
   type GroupDelimiter,
@@ -129,13 +130,19 @@ class Reader {
 
   private identifier(el: Element): Written {
     const name = (el.textContent ?? '').trim()
-    if (GREEK_NAMES.has(name)) return primary([symbol(name)])
     if (!NAME.test(name)) {
       this.problems.add(`"${name}" isn't a CellML variable name`)
-    } else if (functionForSpelling(name)) {
-      this.problems.add(`The variable ${name} has the name of a function, so it reads as one here`)
+      return primary(row(name))
     }
-    return primary(row(name))
+    if (functionForSpelling(name)) {
+      this.problems.add(`The variable ${name} has the name of a function, so it reads as one here`)
+    } else if (reservedConstant(name)) {
+      this.problems.add(
+        `The variable ${name} has a reserved name, so it reads as the constant here`,
+      )
+    }
+    // In its settled form: Greek words as the letters (alpha_m as α_m).
+    return primary(nameAtoms(name))
   }
 
   private number(el: Element): Written {

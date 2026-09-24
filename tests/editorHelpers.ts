@@ -7,6 +7,7 @@ import { type EditorState, emptyState } from '../src/editor/commands'
 import { isValidCursor } from '../src/editor/cursor'
 import { commandForKey } from '../src/editor/keymap'
 import { type Row, type RowPath, childRows, rowPathsEqual } from '../src/editor/layout'
+import { settleNames } from '../src/editor/names'
 import { settleState } from '../src/editor/numberUnits'
 import { parseRow } from '../src/editor/parse'
 import {
@@ -50,8 +51,8 @@ export function press(state: EditorState, ...parts: string[]): EditorState {
         state = command(state)
       }
 
-      // As the workbench does after every key (editor/numberUnits.ts).
-      state = settleState(state)
+      // As the workbench does after every key (numberUnits.ts, names.ts).
+      state = settleNames(settleState(state))
 
       expect(isValidCursor(state.root, state.cursor), `cursor valid after "${key}"`).toBe(true)
       if (state.anchor) {

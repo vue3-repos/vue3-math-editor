@@ -203,10 +203,23 @@ declaring your own functions may come later.
 
 ## Greek letters
 
-Type a backslash and the letter's name, then press Space or Enter: `\alpha`, `\beta`,
-`\Omega`. Typing the letters `alpha` without the backslash gives a variable called
-`alpha`, shown in italics, not α. A Greek letter is always its own name, so `\alpha`
-followed by `x` is α × x. The one exception is π, which is always the constant (below).
+A variable whose name is a Greek letter's name is drawn as that letter, however you type
+it: `\alpha` (backslash, the name, then Space or Enter) or the letters `alpha`. While you
+are typing a name it stays spelled out, so you can finish or change it; once the caret
+leaves it, it becomes the letter. The name is the same either way: both are the variable
+`alpha`, and export as `<ci>alpha</ci>`.
+
+- Each part of a name between underscores that is a Greek letter's name is drawn as the
+  letter, with any digits after it: `alpha_m` is α_m, `tau2` is τ2, `V_beta` is V_β. A name
+  that only contains one (`alphabet`) stays as it is.
+- The letter is one character: the caret steps over it in one go, and Backspace after it
+  deletes it. Retype the name to change it.
+- A Greek letter right next to a letter, with no underscore, is a separate name: `\alpha`
+  then `x` is α·x.
+- π is always the constant, never a variable (below).
+- The application can turn this off (in the demo, the *Draw Greek names* checkbox). Then
+  every Greek letter is spelled out in italics, `\alpha` included, so again both ways of
+  typing it look the same.
 
 ## Constants
 
@@ -218,10 +231,14 @@ followed by `x` is α × x. The one exception is π, which is always the constan
 | `\nan` (or `\notanumber`) | NaN | not a number |
 | `\true`, `\false` | true, false | the logical constants |
 
-The toolbar has buttons for π, e and ∞. A typed letter `e` is a variable called e, shown
-in italics; only `\e` gives Euler's number, shown upright as in print. Likewise the typed
-letters `pi` are a variable called pi. Constants export as MathML's own elements (`<pi/>`,
-`<exponentiale/>`, `<infinity/>`, …), so in CellML they need no units.
+The toolbar has buttons for π, e and ∞. The constants' MathML names are **reserved**:
+typing `pi`, `exponentiale`, `infinity`, `notanumber`, `true` or `false` as a whole name
+gives the constant, not a variable (names containing them, such as `pi_m`, are ordinary
+names). A typed letter `e` is still a variable called e, shown in italics; only `\e` (or
+`exponentiale`) gives Euler's number, shown upright as in print. Constants export as
+MathML's own elements (`<pi/>`, `<exponentiale/>`, `<infinity/>`, …), so in CellML they
+need no units. Imported Content MathML with a variable of a reserved name gets a warning,
+since it reads as the constant.
 
 ## Operators and how things group
 

@@ -80,8 +80,10 @@ const props = withDefaults(
     active?: boolean
     readonly?: boolean
     marks?: readonly Mark[]
+    // Greek letters drawn as letters (editor/names.ts); off, spelled out.
+    greekNames?: boolean
   }>(),
-  { anchor: null, active: true, readonly: false, marks: () => [] },
+  { anchor: null, active: true, readonly: false, marks: () => [], greekNames: true },
 )
 
 const emit = defineEmits<{
@@ -124,6 +126,7 @@ const html = computed(() =>
     rowToLatex(props.modelValue, {
       activeRow: props.active ? props.cursor.path : null,
       shownUnits: shownUnits.value,
+      greekNames: props.greekNames,
     }),
     KATEX_EDITOR_OPTIONS,
   ),
@@ -403,7 +406,10 @@ function copySelection(event: ClipboardEvent): boolean {
   if (atoms.length === 0 || !event.clipboardData) return false
 
   event.preventDefault()
-  event.clipboardData.setData('text/plain', rowToLatexSource(atoms))
+  event.clipboardData.setData(
+    'text/plain',
+    rowToLatexSource(atoms, { greekNames: props.greekNames }),
+  )
   event.clipboardData.setData(CLIPBOARD_MIME, serializeAtoms(atoms))
   return true
 }

@@ -9,7 +9,7 @@
 // model: the root <math> declares the CellML namespace, and every number
 // carries `cellml:units`: its own units (0.25{mV}), or dimensionless.
 
-import { rowToLatexSource } from './clipboard'
+import { type LatexOptions, rowToLatexSource } from './clipboard'
 import type { Row } from './layout'
 import { parseRow } from './parse'
 import { renderMathJson } from '../renderers/mathjson'
@@ -26,12 +26,12 @@ export const EXPORT_FORMATS: ReadonlyArray<{ format: ExportFormat; label: string
 const MATHML_NAMESPACE = 'http://www.w3.org/1998/Math/MathML'
 export const CELLML_NAMESPACE = 'http://www.cellml.org/cellml/2.0#'
 
-export type ExportOptions = ContentMathMLOptions
+export type ExportOptions = ContentMathMLOptions & LatexOptions
 
 export function exportRow(row: Row, format: ExportFormat, options: ExportOptions = {}): string {
   switch (format) {
     case 'latex':
-      return rowToLatexSource(row)
+      return rowToLatexSource(row, options)
     case 'mathjson':
       return renderMathJson(parseRow(row).ast)
     case 'mathml':

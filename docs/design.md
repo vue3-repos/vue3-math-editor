@@ -132,8 +132,28 @@ these notes cover how they are implemented.
 - Rendering: a multi-character name is drawn in `\mathit` (TeX's italic for words, so `Vm`
   reads as one name rather than V m) and kept together, so an exponent applies to the
   whole name.
-- `\alpha` and the other Greek names insert the Greek letter, a single symbol atom that is
-  its own name. `\sin` and the toolbar insert a function atom.
+- A Greek letter is a single symbol atom (`\alpha`, or its name settled, below). It is a
+  word of a name of its own: joined to the rest by `_` or followed by digits it is part
+  of the name (`α_m` is `alpha_m`, `τ2` is `tau2`); straight next to a letter it is a
+  separate name (`αx` is α·x). `nameEnd` in `editor/identifiers.ts` holds the rule, for
+  `nameRuns`, `numberRuns` and the parser alike. `\sin` and the toolbar insert a function
+  atom.
+- **Reserved names:** a name that is exactly a constant's MathML name (`pi`,
+  `exponentiale`, `infinity`, `notanumber`, `true`, `false`) is the constant, as a function
+  spelling is the function (`reservedConstant`); `e` alone stays a variable.
+- **Settled names** (`editor/names.ts`). One way of writing each name: `settleNames`
+  replaces every name the cursor isn't in, or at the end of, with its settled form
+  (`nameAtoms`): a reserved name becomes the constant atom; with Greek names on, each
+  word that is a Greek letter's name, perhaps with digits (`greekWord`), becomes the
+  letter atom. The workbench applies it with every state (after `settleState`), to the
+  line left when the active line changes (`cursorAway`), and to every line when its
+  `greekNames` prop changes; the unit tests' `press` does the same. With Greek names off
+  names are left as typed, and Greek atoms are drawn (`rowToLatex`) and copied
+  (`rowToLatexSource`) spelled out, `\mathit{alpha}`, so both spellings look alike either
+  way. So a Greek word stays spelled out while being typed and becomes the letter when
+  the caret leaves, and the caret then steps over it as one atom; Backspace deletes it.
+  Copying as LaTeX writes `\alpha \_m`, which pastes back as the one name. The Content
+  MathML import writes names settled too, and warns of variables with reserved names.
 
 ### Numbers
 
@@ -213,7 +233,8 @@ parser, renderers, clipboard and keymap all read.
 - Each is one symbol atom whose value is the constant's name, inserted with `\pi`, `\e`,
   `\inf`, `\nan`, `\true`, `\false` (and synonyms), and parsed as a `Constant` node rather
   than an identifier. π is the Greek letter atom, so `\pi` is always the constant; the
-  typed letters `pi` stay a variable, as does a typed `e`.
+  typed letters `pi` are the constant too (reserved, above), while a typed `e` is a
+  variable.
 - Drawn as π, upright e, ∞, NaN, true, false. MathJSON: `Pi`, `ExponentialE`,
   `{num: "+Infinity"}`, `{num: "NaN"}`, `True`, `False`.
 - LaTeX: `\pi \mathrm{e} \infty \mathrm{NaN} \mathrm{true}`. When pasting, `\mathrm{e}`
@@ -624,7 +645,8 @@ Findings from trying libcellml.js 0.7.1 on the editor's output:
   first piece that is a number with units, but not of one that is an expression, whose
   units only the checker knows. The checker could say which units it needs.
 - **Subscripts in names.** The underscore is shown literally while the convention for
-  formatting variable names (subscripts, and superscripts within them) is undecided.
+  formatting variable names (subscripts, and superscripts within them) is undecided. The
+  `greekNames` switch could grow into a "typeset names" switch: α_m with m as a subscript.
 - **Boolean-valued equations.** Because `=` is a comparison, `b = x < 1` is a chained
   comparison; it has to be written `b = (x < 1)`. Rare in CellML, where variables are
   real-valued.

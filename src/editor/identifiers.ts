@@ -8,8 +8,10 @@
 //
 // A name that is exactly a known function's spelling ("sin", "cosh",
 // "arcsin") is that function; a longer name containing one ("cost",
-// "tangent") is just a name. The underscore is part of the name and shown
-// literally (no subscript formatting).
+// "tangent") is just a name. A name that is exactly a constant's MathML name
+// ("pi", "infinity") is reserved: it is the constant. The underscore is part
+// of the name and shown literally (no subscript formatting); it also
+// separates the name's words, so a Greek letter can be one (α_m, names.ts).
 //
 // Each character stays its own atom, so the cursor moves through a name one
 // character at a time; the grouping is worked out here, when parsing and
@@ -51,8 +53,42 @@ export function functionForSpelling(spelling: string): string | undefined {
 const isSymbol = (atom: Atom | undefined, pattern: RegExp): boolean =>
   atom?.kind === 'symbol' && pattern.test(atom.value)
 
-export const startsName = (atom: Atom | undefined) => isSymbol(atom, /^[A-Za-z]$/)
-export const continuesName = (atom: Atom | undefined) => isSymbol(atom, /^[A-Za-z0-9_]$/)
+// A Greek letter as one atom (\alpha, or its name typed out and settled,
+// names.ts). Not π: \pi and pi are the constant.
+export const isGreekAtom = (atom: Atom | undefined): boolean =>
+  atom?.kind === 'symbol' && GREEK_NAMES.has(atom.value) && !constantForSymbol(atom.value)
+
+const isLetter = (atom: Atom | undefined) => isSymbol(atom, /^[A-Za-z]$/)
+
+export const startsName = (atom: Atom | undefined) => isLetter(atom) || isGreekAtom(atom)
+export const continuesName = (atom: Atom | undefined) =>
+  isSymbol(atom, /^[A-Za-z0-9_]$/) || isGreekAtom(atom)
+
+// Where the name starting at `start` ends. Letters, digits and underscores
+// run on; a Greek letter is a word of its own, joined to the rest of the name
+// by an underscore (α_m, m_α) or followed by digits (α2). A Greek letter
+// straight next to a letter is a separate name: αx is α·x.
+export function nameEnd(row: Row, start: number): number {
+  let i = start
+  while (i < row.length && continuesName(row[i])) {
+    const previous = row[i - 1]
+    const greek = isGreekAtom(row[i])
+    if (i > start) {
+      if (greek && !isSymbol(previous, /^_$/)) break
+      if (isLetter(row[i]) && isGreekAtom(previous)) break
+    }
+    if (i === start && !greek && !isLetter(row[i])) break
+    i++
+  }
+  return i
+}
+
+// The names that are always a constant, never a variable: the constants'
+// MathML names. Typed out, "pi" is π; "e" stays a variable (\e is Euler's
+// number).
+export function reservedConstant(name: string): string | undefined {
+  return constantForSymbol(name)?.symbol
+}
 
 export interface NameRun {
   // Atoms [start, end) of the row.
@@ -82,11 +118,11 @@ export function nameRuns(row: Row): NameRun[] {
     }
 
     const start = i
-    let name = ''
-    while (i < row.length && continuesName(row[i])) {
-      name += (row[i] as Atom & { kind: 'symbol' }).value
-      i++
-    }
+    i = nameEnd(row, start)
+    const name = row
+      .slice(start, i)
+      .map((atom) => (atom as Atom & { kind: 'symbol' }).value)
+      .join('')
 
     runs.push({ start, end: i, name, functionName: functionForSpelling(name) ?? null })
   }
@@ -102,7 +138,7 @@ export function numberRuns(row: Row): NumberRun[] {
 
   while (i < row.length) {
     if (startsName(row[i])) {
-      while (i < row.length && continuesName(row[i])) i++
+      i = nameEnd(row, i)
       continue
     }
 

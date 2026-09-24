@@ -13,6 +13,8 @@ import exampleUnits from './demo/example-units.cellml?raw'
 // Demo switches: ?cellml for CellML mode; ?nolibcellml to run without the
 // libCellML plugin (see main.ts), as an application without it would.
 const cellml = new URLSearchParams(window.location.search).has('cellml')
+// Names that are Greek letters' names (alpha, tau_m) drawn as the letters.
+const greekNames = ref(!new URLSearchParams(window.location.search).has('nogreek'))
 
 const lines = ref<EquationLine[]>([])
 const sources = ref<UnitsSource[]>([])
@@ -98,10 +100,15 @@ Object.assign(window, {
     <section class="hero">
       <h1>Math Equation Workbench</h1>
       <p>Canonical AST editing for LaTeX and Content MathML output.</p>
+      <label class="demo-option">
+        <input v-model="greekNames" type="checkbox" data-role="greek-names" />
+        Draw Greek names as Greek letters (alpha_m as α_m)
+      </label>
     </section>
 
     <EquationWorkbench
       :cellml="cellml"
+      :greek-names="greekNames"
       :issues="issues"
       :variable-units="hintUnits"
       @equations-change="lines = $event"
@@ -167,6 +174,15 @@ Object.assign(window, {
   font-size: clamp(1.5rem, 3vw, 2.2rem);
   letter-spacing: -0.02em;
   color: #0f172a;
+}
+
+.demo-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: #334155;
 }
 
 .hero p {

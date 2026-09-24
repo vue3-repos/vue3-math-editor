@@ -24,6 +24,9 @@ export interface LayoutLatexOptions {
   // The units atoms to draw (by id). A number's units are hidden unless they
   // are being edited or have a problem (editor/numberUnits.ts).
   shownUnits?: ReadonlySet<string>
+  // Greek letters drawn as letters (default), or spelled out in italics, as a
+  // name typed out is (editor/names.ts).
+  greekNames?: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -105,8 +108,10 @@ function tag(id: string, body: string): string {
 }
 
 // One character of a multi-character name, in the word italic.
-function nameGlyph(char: string): string {
-  return char === '_' ? '\\_' : `\\mathit{${char}}`
+function nameGlyph(char: string, options: LayoutLatexOptions): string {
+  if (char === '_') return '\\_'
+  if (GREEK_NAMES.has(char) && options.greekNames !== false) return `\\${char}`
+  return `\\mathit{${char}}`
 }
 
 // One character of a number in scientific notation. The exponent's sign is
@@ -119,7 +124,7 @@ function scientificGlyph(char: string): string {
   return char
 }
 
-function renderSymbol(id: string, value: string): string {
+function renderSymbol(id: string, value: string, options: LayoutLatexOptions = {}): string {
   if (value in BINARY) return `\\mathbin{${tag(id, BINARY[value])}}`
   if (value in RELATION) return `\\mathrel{${tag(id, RELATION[value])}}`
   if (value === ',') return `\\mathpunct{${tag(id, ',')}}`
@@ -127,7 +132,7 @@ function renderSymbol(id: string, value: string): string {
   const constant = constantForSymbol(value)
   if (constant) return tag(id, constant.latex)
   if (/^[0-9.]$/.test(value) || /^[A-Za-z]$/.test(value)) return tag(id, value)
-  if (GREEK_NAMES.has(value)) return tag(id, `\\${value}`)
+  if (GREEK_NAMES.has(value) && options.greekNames !== false) return tag(id, `\\${value}`)
   if (/^[A-Za-z]+$/.test(value)) return tag(id, `\\mathit{${value}}`)
 
   const text = Array.from(value)
@@ -181,7 +186,7 @@ function renderRow(row: Row, path: RowPath, options: LayoutLatexOptions): string
           // \\mathit is TeX's italic for words: "Vm" reads as one name, not
           // the slightly spaced V m of single-letter maths italic.
           pieces.push(
-            `{${letters.map((l) => tag(l.id, nameGlyph((l as { value: string }).value))).join('')}}`,
+            `{${letters.map((l) => tag(l.id, nameGlyph((l as { value: string }).value, options))).join('')}}`,
           )
         }
         index = run.end - 1
@@ -228,7 +233,7 @@ function renderAtom(
 
   switch (atom.kind) {
     case 'symbol':
-      return renderSymbol(atom.id, atom.value)
+      return renderSymbol(atom.id, atom.value, options)
 
     case 'function': {
       const name = getFunctionDefinition(atom.name)?.latexName ?? atom.name

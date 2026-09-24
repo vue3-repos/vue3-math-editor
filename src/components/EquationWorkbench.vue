@@ -65,6 +65,7 @@ import {
 } from '../editor/units'
 import type { Row } from '../editor/layout'
 import type { MathMLImport } from '../editor/mathmlImport'
+import { settleNames } from '../editor/names'
 import { settleState } from '../editor/numberUnits'
 import { parseRow } from '../editor/parse'
 import { describeSelection, selectedAtoms, selectionOf } from '../editor/selection'
@@ -75,15 +76,19 @@ const props = withDefaults(
     cellml?: boolean
     issues?: readonly UnitsIssue[]
     variableUnits?: VariableUnits
+    // Names that are Greek letters' names (alpha, tau_m) drawn as the letters
+    // (α, τ_m), however they were typed; off, Greek letters are spelled out.
+    // Either way the names are the same (editor/names.ts).
+    greekNames?: boolean
   }>(),
-  { cellml: false, issues: () => [], variableUnits: undefined },
+  { cellml: false, issues: () => [], variableUnits: undefined, greekNames: true },
 )
 
 const emit = defineEmits<{
   'equations-change': [lines: EquationLine[]]
 }>()
 
-const exportOptions = computed(() => ({ cellml: props.cellml }))
+const exportOptions = computed(() => ({ cellml: props.cellml, greekNames: props.greekNames }))
 
 const equations = ref<EditorState[]>([emptyState()])
 // Each line's id, parallel to `equations`: stable while the line exists, so a
@@ -104,8 +109,27 @@ function active(): EditorState {
 // Every state is settled first: no cursor before a number's hidden units, and
 // units no longer wanted removed (editor/numberUnits.ts).
 function setEquation(index: number, state: EditorState) {
-  equations.value[index] = settleState(state)
+  equations.value[index] = settle(state)
 }
+
+// Settled: number units (numberUnits.ts), then names (names.ts). A line no
+// longer being edited has every name settled, the cursor's too.
+const settle = (state: EditorState, cursorAway = false) =>
+  settleNames(settleState(state), { greekNames: props.greekNames, cursorAway })
+
+// Leaving a line, and turning Greek names on or off, settle names too.
+watch(activeIndex, (_, left) => {
+  const line = equations.value[left]
+  if (line) equations.value[left] = settle(line, true)
+})
+watch(
+  () => props.greekNames,
+  () => {
+    equations.value = equations.value.map((line, index) =>
+      settle(line, index !== activeIndex.value),
+    )
+  },
+)
 
 function focusActive() {
   void nextTick(() => fieldRefs.value[activeIndex.value]?.focus())
@@ -192,7 +216,7 @@ function handleImport(index: number, result: MathMLImport) {
   } else if (count > 1) {
     pushHistory(index)
     equations.value = result.equations.map((root) =>
-      settleState({ root, cursor: cursorAtEnd(root), anchor: null }),
+      settle({ root, cursor: cursorAtEnd(root), anchor: null }, true),
     )
     lineIds.value = result.equations.map(() => newLineId())
     activeIndex.value = 0
@@ -499,7 +523,9 @@ watch(
 const ast = computed(() => parsed.value?.ast ?? null)
 const diagnostics = computed(() => parsed.value?.diagnostics ?? [])
 // The same LaTeX as copying and "Copy as LaTeX" produce.
-const latex = computed(() => (ast.value ? exportRow(active().root, 'latex') : ''))
+const latex = computed(() =>
+  ast.value ? exportRow(active().root, 'latex', exportOptions.value) : '',
+)
 const mathjson = computed(() => (ast.value ? renderMathJson(ast.value) : ''))
 const mathml = computed(() => (ast.value ? contentMathML(active().root, exportOptions.value) : ''))
 const cursorLabel = computed(() => describeCursor(active().cursor))
@@ -757,6 +783,7 @@ function toggleCopyMenu(event: Event) {
               :anchor="equation.anchor ?? null"
               :active="index === activeIndex"
               :marks="lineMarks[index]"
+              :greek-names="greekNames"
               @navigate="handleNavigate(index, $event)"
               @edit="(state, info) => handleEdit(index, state, info)"
               @import="handleImport(index, $event)"

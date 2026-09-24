@@ -54,9 +54,10 @@ import type { AstNode, NumberNode } from '../types/ast'
 import { functionForBracket } from '../registry/nodes'
 import { constantForSymbol } from './constants'
 import {
-  continuesName,
   functionForSpelling,
   inheritedOtherwiseUnits,
+  nameEnd,
+  reservedConstant,
   startsName,
 } from './identifiers'
 import { numberAt } from './numbers'
@@ -134,21 +135,24 @@ function tokenize(row: Row, diagnostics: ParseDiagnostic[]): Token[] {
       continue
     }
 
-    // A name: a letter, then letters, digits and underscores.
+    // A name: a letter (or Greek letter), then letters, digits and
+    // underscores (identifiers.ts). One spelling a function is the function;
+    // one that is a constant's name (pi) is the constant.
     if (startsName(atom)) {
-      let name = ''
-      const atomIds: string[] = []
-      while (i < row.length && continuesName(row[i])) {
-        name += (row[i] as { value: string }).value
-        atomIds.push(row[i].id)
-        i++
-      }
+      const end = nameEnd(row, i)
+      const atoms = row.slice(i, end)
+      const name = atoms.map((a) => (a as { value: string }).value).join('')
+      const atomIds = atoms.map((a) => a.id)
+      i = end
 
       const functionName = functionForSpelling(name)
+      const constant = reservedConstant(name)
       tokens.push(
         functionName
           ? { kind: 'function', name: functionName, atomIds }
-          : { kind: 'identifier', name, atomIds },
+          : constant
+            ? { kind: 'constant', name: constant, atomIds }
+            : { kind: 'identifier', name, atomIds },
       )
       continue
     }

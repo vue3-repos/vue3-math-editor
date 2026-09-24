@@ -18,7 +18,9 @@ import {
   functionForSpelling,
   nameRuns,
   numberRuns,
+  reservedConstant,
 } from './identifiers'
+import { greekWord } from './names'
 import { constantForLatexCommand, constantForSymbol, constantForUprightText } from './constants'
 import {
   CONDITION_OPERATORS,
@@ -161,12 +163,12 @@ const TEXT_ESCAPES: Record<string, string> = {
   '~': '\\textasciitilde{}',
 }
 
-function symbolLatex(value: string): string {
+function symbolLatex(value: string, options: LatexOptions = {}): string {
   if (value in OPERATOR_LATEX) return OPERATOR_LATEX[value]
   if (/^[A-Za-z0-9.+\-=,]$/.test(value)) return value
   const constant = constantForSymbol(value)
   if (constant) return /[a-z]$/i.test(constant.latex) ? `${constant.latex} ` : constant.latex
-  if (GREEK_NAMES.has(value)) return `\\${value} `
+  if (GREEK_NAMES.has(value) && options.greekNames !== false) return `\\${value} `
   if (/^[A-Za-z]+$/.test(value)) return `\\mathit{${value}}`
   return `\\text{${Array.from(value, (c) => TEXT_ESCAPES[c] ?? c).join('')}}`
 }
@@ -181,7 +183,12 @@ const isOperatorAtom = (atom: Atom | undefined) =>
 // written as \square, which latexToRow reads back as an empty row. A number
 // in scientific notation is written 1\mathrm{e}{-08}: upright e, and the
 // exponent braced so its sign gets no operator spacing.
-export function rowToLatexSource(row: Row): string {
+export interface LatexOptions {
+  // Greek letters as \alpha (default), or spelled out, as on screen.
+  greekNames?: boolean
+}
+
+export function rowToLatexSource(row: Row, options: LatexOptions = {}): string {
   const runs = new Map(nameRuns(row).map((run) => [run.start, run]))
   const scientific = new Map(
     numberRuns(row)
@@ -205,61 +212,80 @@ export function rowToLatexSource(row: Row): string {
     const run = runs.get(i)
 
     if (run) {
-      out += nameLatex(run.name, run.functionName)
+      out += nameLatex(run.name, run.functionName, options)
       i = run.end
       continue
     }
 
-    out += atomLatex(row[i], row[i - 1])
+    out += atomLatex(row[i], row[i - 1], options)
     i++
   }
 
   return out.trim() || '\\square'
 }
 
-function nameLatex(name: string, functionName: string | null): string {
+function nameLatex(name: string, functionName: string | null, options: LatexOptions): string {
   if (functionName) {
     return functionLatex(functionName)
+  }
+
+  const constant = reservedConstant(name)
+  if (constant) return symbolLatex(constant)
+
+  // With Greek names, each Greek word as its letter: alpha_m is \alpha\_m.
+  const words = name.split('_')
+  const greek = options.greekNames !== false && words.some((word) => greekWord(word))
+  if (greek) {
+    return words
+      .map((word) => {
+        const letter = greekWord(word)
+        // A space ends the command (\alpha x), unless digits do (\alpha2).
+        if (letter) return `\\${letter}${word.slice(letter.length) || ' '}`
+        return word.length === 1 ? word : `\\mathit{${word}}`
+      })
+      .join('\\_')
   }
 
   return name.length === 1 ? name : `\\mathit{${name.replace(/_/g, '\\_')}}`
 }
 
-function atomLatex(atom: Atom, previous: Atom | undefined): string {
+function atomLatex(atom: Atom, previous: Atom | undefined, options: LatexOptions): string {
   switch (atom.kind) {
     case 'symbol':
-      return symbolLatex(atom.value)
+      return symbolLatex(atom.value, options)
     case 'function':
       return functionLatex(atom.name)
     case 'fraction':
-      return `\\frac{${rowToLatexSource(atom.num)}}{${rowToLatexSource(atom.den)}}`
+      return `\\frac{${rowToLatexSource(atom.num, options)}}{${rowToLatexSource(atom.den, options)}}`
     case 'superscript': {
       // Attaches to the atom before it; with nothing suitable, an empty base.
       const base = previous && !isOperatorAtom(previous) ? '' : '{}'
-      return `${base}^{${rowToLatexSource(atom.sup)}}`
+      return `${base}^{${rowToLatexSource(atom.sup, options)}}`
     }
     case 'root':
       return atom.index
-        ? `\\sqrt[${rowToLatexSource(atom.index)}]{${rowToLatexSource(atom.body)}}`
-        : `\\sqrt{${rowToLatexSource(atom.body)}}`
+        ? `\\sqrt[${rowToLatexSource(atom.index, options)}]{${rowToLatexSource(atom.body, options)}}`
+        : `\\sqrt{${rowToLatexSource(atom.body, options)}}`
     case 'group': {
       // \left( … \right), \left| … \right|, \left\lfloor … \right\rfloor, …
       const open = delimiterLatex(atom.open)
       const close = delimiterLatex(atom.close)
       const space = (d: string) => (/[a-z]$/.test(d) ? ' ' : '')
-      return `\\left${open}${space(open)}${rowToLatexSource(atom.body)}\\right${close}${space(close)}`
+      return `\\left${open}${space(open)}${rowToLatexSource(atom.body, options)}\\right${close}${space(close)}`
     }
     case 'derivative':
-      return `\\frac{\\mathrm{d}${rowToLatexSource(atom.expr)}}{\\mathrm{d}${rowToLatexSource(atom.variable)}}`
+      return `\\frac{\\mathrm{d}${rowToLatexSource(atom.expr, options)}}{\\mathrm{d}${rowToLatexSource(atom.variable, options)}}`
     case 'units':
       // Left out, as on screen: a number's units are hidden (numberUnits.ts).
       // The editor's own clipboard format keeps them.
       return ''
     case 'piecewise': {
       const lines = atom.pieces.map(
-        ({ value, condition }) => `${rowToLatexSource(value)} & ${rowToLatexSource(condition)}`,
+        ({ value, condition }) =>
+          `${rowToLatexSource(value, options)} & ${rowToLatexSource(condition, options)}`,
       )
-      if (atom.otherwise) lines.push(`${rowToLatexSource(atom.otherwise)} & \\text{otherwise}`)
+      if (atom.otherwise)
+        lines.push(`${rowToLatexSource(atom.otherwise, options)} & \\text{otherwise}`)
       return `\\begin{cases}${lines.join(' \\\\ ')}\\end{cases}`
     }
   }

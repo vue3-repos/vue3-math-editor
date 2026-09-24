@@ -24,6 +24,7 @@ Nothing here needs libCellML.
 | `cellml` | `boolean` | `false` | CellML mode for the Content MathML the user sees and copies: the CellML namespace is declared on `<math>`, and every number carries `cellml:units`. |
 | `issues` | `UnitsIssue[]` | `[]` | Units problems to show. Each is underlined in amber on its line and listed under the equations when that line is active; the message shows on hover. |
 | `variableUnits` | `Record<string, string>` | none | Each variable's units by name, shown on hover ("Vm: millivolt"). When given, numbers without units also show theirs on hover ("2: dimensionless"); numbers with units always do ("0.25: mV"). |
+| `greekNames` | `boolean` | `true` | Names that are Greek letters' names (`alpha`, `tau_m`) are drawn as the letters (α, τ_m), however they were typed; off, every Greek letter is spelled out (`\alpha` included). The names, and so the MathML, are the same either way. |
 
 ### Slot
 

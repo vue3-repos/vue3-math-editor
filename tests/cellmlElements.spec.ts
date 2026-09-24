@@ -42,7 +42,7 @@ describe('constants', () => {
     expect(values(constant('true'))).toEqual(['true'])
   })
 
-  it('parse as constants, not variables; a typed letter e is still a variable', () => {
+  it('parse as constants, not variables; their names are reserved, but a typed e is a variable', () => {
     expect(parseRow(constant('pi')).ast).toEqual({ type: 'Constant', name: 'pi' })
     expect(jsonOf(row('2', symbol('pi'), 'r'))).toEqual(['Multiply', 2, 'Pi', 'r'])
     expect(jsonOf(row(symbol('exponentiale'), superscript(row('x'))))).toEqual([
@@ -51,7 +51,10 @@ describe('constants', () => {
       'x',
     ])
     expect(json(type('e'))).toEqual('e')
-    expect(json(type('pi'))).toEqual('pi') // typed letters: a name
+    // Typed out, a constant's MathML name is the constant (reserved).
+    expect(json(type('pi'))).toEqual('Pi')
+    expect(json(type('2*infinity'))).toEqual(['Multiply', 2, { num: '+Infinity' }])
+    expect(json(type('pix'))).toEqual('pix')
   })
 
   it('export to MathML elements and MathJSON', () => {
