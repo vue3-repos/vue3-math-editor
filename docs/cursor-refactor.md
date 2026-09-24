@@ -241,6 +241,31 @@ around the cursor (which may be deep inside a piece):
   `\text{if}` (or for, when) in a condition is dropped, and a condition of
   `\text{otherwise}` or `else` makes that line the otherwise.
 
+### CellML 2.0 MathML coverage
+
+Every element in CellML 2.0's MathML subset (spec table 2.1) can now be produced:
+
+- **Constants** (`editor/constants.ts`): `<pi/>`, `<exponentiale/>`, `<infinity/>`,
+  `<notanumber/>`, `<true/>`, `<false/>`. Each is one symbol atom whose value is the
+  constant's name, inserted with `\pi`, `\e`, `\inf`, `\nan`, `\true`, `\false` (and
+  synonyms), and parsed as a `Constant` node rather than an identifier. π is the Greek
+  letter atom, so `\pi` is always the constant; the typed letters `pi` stay a variable, as
+  does a typed `e`. Drawn as π, upright e, ∞, NaN, true, false. MathJSON: `Pi`,
+  `ExponentialE`, `{num: "+Infinity"}`, `{num: "NaN"}`, `True`, `False`.
+- **LaTeX:** copied as `\pi \mathrm{e} \infty \mathrm{NaN} \mathrm{true}`. When pasting,
+  `\mathrm{e}` straight before a brace is the e of a scientific number (`1\mathrm{e}{-08}`,
+  as copying writes it); otherwise it is Euler's number. A plain `e` is the variable e.
+- **Functions** (`registry/nodes.ts`): the registry now lists every CellML function:
+  `floor`, `ceiling` (alias `ceil`), `min`, `max`, `rem`, `sech`, `csch`, `coth`, `arcsec`,
+  `arccsc`, `arccot` and the six inverse hyperbolic functions, alongside the existing
+  ones. Each entry has its MathML tag and MathJSON name (CortexJS: `Floor`, `Ceil`, `Asec`,
+  `Arsinh`, …), and whether LaTeX has a command for it; those without are copied as
+  `\operatorname{arcsinh}`, which pastes back. `rem` exports to MathJSON as `Remainder`,
+  not `Mod`, since `Mod` takes the sign of the divisor. A test checks the registry
+  against the spec's list.
+- Not done: ⌊x⌋ / ⌈x⌉ bracket notation for floor and ceiling (they are drawn as named
+  functions), and argument-count checks (e.g. `rem` with one argument).
+
 ### Rendering and caret notes (step 3)
 
 - `renderers/layoutLatex.ts` wraps every atom in `\htmlData{atom=<id>}` and every row in
@@ -483,7 +508,3 @@ multi-line list, command mode, toolbar and output panels.
 - Pasting several lines as several equations.
 - Showing a mark's message when the caret is on it, for keyboard users (the warning
   box lists them meanwhile).
-- CellML 2.0 MathML the editor can't produce yet: the constants `pi`, `exponentiale`,
-  `infinity`, `true` and `false` (`e` and `pi` currently export as variables); `floor`,
-  `ceiling`, `min`, `max`, `rem`; and the reciprocal and inverse hyperbolic trig
-  functions.

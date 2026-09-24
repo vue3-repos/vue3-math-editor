@@ -1,6 +1,7 @@
 export type AstNode =
   | NumberNode
   | IdentifierNode
+  | ConstantNode
   | AddNode
   | MultiplyNode
   | SubtractNode
@@ -30,6 +31,13 @@ export interface NumberNode {
 
 export interface PlaceholderNode {
   type: 'Placeholder'
+}
+
+// π, e, ∞, NaN, true, false (see editor/constants.ts); name is the constant's
+// symbol: 'pi', 'exponentiale', 'infinity', 'notanumber', 'true', 'false'.
+export interface ConstantNode {
+  type: 'Constant'
+  name: string
 }
 
 export interface IdentifierNode {

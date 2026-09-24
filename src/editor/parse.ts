@@ -18,7 +18,8 @@
 //   unary      := '-' unary | term
 //   term       := factor ( ['*' | '·' | '×'] factor )*     implicit or explicit
 //   factor     := primary superscript*
-//   primary    := number | identifier | function | group | |abs| | fraction
+//   primary    := number | identifier | constant | function | group | |abs|
+//               | fraction
 //               | root | derivative
 //
 // "=" is a comparison like the others, so a condition such as x = 0 ∧ y > 1
@@ -40,12 +41,15 @@
 //   a name is still a product: `2Vm` is 2·Vm. A symbol whose value is a whole
 //   word (a Greek letter such as "alpha", inserted by a command) is its own
 //   identifier. Function atoms (from \sin or the toolbar) are functions.
+// - A constant's symbol (\pi, \e, \infty, …; see constants.ts) is a Constant,
+//   not an identifier.
 // - A superscript attaches to the factor before it: `x^2` -> Power(x, 2).
 // - Numbers (see numbers.ts) may be in scientific notation: `1e-08` is one
 //   Number with value 1e-8, keeping its notation for the exporters; `2e` and
 //   `2e-x` are 2·e and 2·e − x.
 
 import type { AstNode, NumberNode } from '../types/ast'
+import { constantForSymbol } from './constants'
 import { continuesName, functionForSpelling, startsName } from './identifiers'
 import { numberAt } from './numbers'
 import { CONDITION_OPERATORS, conditionOperator } from './operators'
@@ -80,6 +84,7 @@ type Operator = string
 type Token = { atomIds: string[] } & (
   | { kind: 'number'; value: number; scientific?: NumberNode['scientific'] }
   | { kind: 'identifier'; name: string }
+  | { kind: 'constant'; name: string }
   | { kind: 'operator'; op: Operator }
   | { kind: 'function'; name: string }
   | { kind: 'structure'; atom: StructureAtom }
@@ -172,6 +177,8 @@ function tokenize(row: Row, diagnostics: ParseDiagnostic[]): Token[] {
 
     if (op) {
       tokens.push({ kind: 'operator', op, atomIds })
+    } else if (constantForSymbol(atom.value)) {
+      tokens.push({ kind: 'constant', name: atom.value, atomIds })
     } else if (/^[A-Za-z]+$/.test(atom.value)) {
       tokens.push({ kind: 'identifier', name: atom.value, atomIds })
     } else {
@@ -370,6 +377,8 @@ class Parser {
           : { type: 'Number', value: token.value }
       case 'identifier':
         return { type: 'Identifier', name: token.name }
+      case 'constant':
+        return { type: 'Constant', name: token.name }
       case 'function':
         return this.parseFunction(token.name)
       case 'structure':
@@ -496,6 +505,7 @@ class Parser {
     switch (token.kind) {
       case 'number':
       case 'identifier':
+      case 'constant':
       case 'function':
         return true
       case 'structure':

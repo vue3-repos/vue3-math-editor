@@ -1,27 +1,86 @@
+// The functions the editor knows: every function CellML 2.0 allows in its
+// MathML subset. A typed name that is exactly one of a function's spellings
+// (its name, its LaTeX name or an alias) is that function (identifiers.ts).
+
 export interface FunctionDefinition {
   name: string
+  // Its usual written name, as drawn and as a LaTeX command or operator name
+  // ("arcsin", "floor").
   latexName: string
-  mathMlTag?: string
+  // Whether \latexName is a standard LaTeX command (\sin, \max); if not, the
+  // name is written \operatorname{…} when copying as LaTeX.
+  latexCommand: boolean
+  mathMlTag: string
+  // MathJSON operator (CortexJS standard library names).
+  mathJson: string
+  // Other spellings that type it ("ceil" for ceiling).
+  aliases?: readonly string[]
 }
 
-export const FUNCTION_REGISTRY: Record<string, FunctionDefinition> = {
-  exp: { name: 'exp', latexName: 'exp', mathMlTag: 'exp' },
-  log: { name: 'log', latexName: 'log', mathMlTag: 'log' },
-  ln: { name: 'ln', latexName: 'ln', mathMlTag: 'ln' },
-  sin: { name: 'sin', latexName: 'sin', mathMlTag: 'sin' },
-  cos: { name: 'cos', latexName: 'cos', mathMlTag: 'cos' },
-  tan: { name: 'tan', latexName: 'tan', mathMlTag: 'tan' },
-  sec: { name: 'sec', latexName: 'sec', mathMlTag: 'sec' },
-  csc: { name: 'csc', latexName: 'csc', mathMlTag: 'csc' },
-  cot: { name: 'cot', latexName: 'cot', mathMlTag: 'cot' },
-  asin: { name: 'asin', latexName: 'arcsin', mathMlTag: 'arcsin' },
-  acos: { name: 'acos', latexName: 'arccos', mathMlTag: 'arccos' },
-  atan: { name: 'atan', latexName: 'arctan', mathMlTag: 'arctan' },
-  sinh: { name: 'sinh', latexName: 'sinh', mathMlTag: 'sinh' },
-  cosh: { name: 'cosh', latexName: 'cosh', mathMlTag: 'cosh' },
-  tanh: { name: 'tanh', latexName: 'tanh', mathMlTag: 'tanh' },
-}
+type Entry = [
+  name: string,
+  latexName: string,
+  latexCommand: boolean,
+  mathMlTag: string,
+  mathJson: string,
+  aliases?: string[],
+]
+
+// prettier-ignore
+const ENTRIES: Entry[] = [
+  ['exp', 'exp', true, 'exp', 'Exp'],
+  ['log', 'log', true, 'log', 'Log'],
+  ['ln', 'ln', true, 'ln', 'Ln'],
+  ['floor', 'floor', false, 'floor', 'Floor'],
+  ['ceiling', 'ceiling', false, 'ceiling', 'Ceil', ['ceil']],
+  ['min', 'min', true, 'min', 'Min'],
+  ['max', 'max', true, 'max', 'Max'],
+  // Remainder of a / b (MathML rem); MathJSON's Mod rounds differently for
+  // negative numbers, so this is not Mod.
+  ['rem', 'rem', false, 'rem', 'Remainder'],
+  ['sin', 'sin', true, 'sin', 'Sin'],
+  ['cos', 'cos', true, 'cos', 'Cos'],
+  ['tan', 'tan', true, 'tan', 'Tan'],
+  ['sec', 'sec', true, 'sec', 'Sec'],
+  ['csc', 'csc', true, 'csc', 'Csc'],
+  ['cot', 'cot', true, 'cot', 'Cot'],
+  ['sinh', 'sinh', true, 'sinh', 'Sinh'],
+  ['cosh', 'cosh', true, 'cosh', 'Cosh'],
+  ['tanh', 'tanh', true, 'tanh', 'Tanh'],
+  ['sech', 'sech', false, 'sech', 'Sech'],
+  ['csch', 'csch', false, 'csch', 'Csch'],
+  ['coth', 'coth', true, 'coth', 'Coth'],
+  ['asin', 'arcsin', true, 'arcsin', 'Arcsin'],
+  ['acos', 'arccos', true, 'arccos', 'Arccos'],
+  ['atan', 'arctan', true, 'arctan', 'Arctan'],
+  ['asec', 'arcsec', false, 'arcsec', 'Asec'],
+  ['acsc', 'arccsc', false, 'arccsc', 'Acsc'],
+  ['acot', 'arccot', false, 'arccot', 'Acot'],
+  ['asinh', 'arcsinh', false, 'arcsinh', 'Arsinh'],
+  ['acosh', 'arccosh', false, 'arccosh', 'Arcosh'],
+  ['atanh', 'arctanh', false, 'arctanh', 'Artanh'],
+  ['asech', 'arcsech', false, 'arcsech', 'Asech'],
+  ['acsch', 'arccsch', false, 'arccsch', 'Acsch'],
+  ['acoth', 'arccoth', false, 'arccoth', 'Arcoth'],
+]
+
+export const FUNCTION_REGISTRY: Record<string, FunctionDefinition> = Object.fromEntries(
+  ENTRIES.map(([name, latexName, latexCommand, mathMlTag, mathJson, aliases]) => [
+    name,
+    { name, latexName, latexCommand, mathMlTag, mathJson, ...(aliases && { aliases }) },
+  ]),
+)
 
 export function getFunctionDefinition(name: string): FunctionDefinition | null {
   return FUNCTION_REGISTRY[name.toLowerCase()] ?? null
+}
+
+// A function's name as LaTeX: \sin, or \operatorname{arcsinh} where there is
+// no standard command. A trailing space ends a command name.
+export function functionLatex(name: string): string {
+  const definition = getFunctionDefinition(name)
+  if (!definition) return `\\operatorname{${name}}`
+  return definition.latexCommand
+    ? `\\${definition.latexName} `
+    : `\\operatorname{${definition.latexName}}`
 }

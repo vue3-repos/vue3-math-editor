@@ -1,4 +1,5 @@
 import type { AstNode, NumberNode } from '../types/ast'
+import { constantForSymbol } from '../editor/constants'
 import { conditionOperatorOfType } from '../editor/operators'
 import { getFunctionDefinition } from '../registry/nodes'
 
@@ -51,6 +52,9 @@ export function astToContentMathML(node: AstNode, options: ContentMathMLOptions 
 
     case 'Identifier':
       return `<ci>${node.name}</ci>`
+
+    case 'Constant':
+      return `<${constantForSymbol(node.name)!.mathml}/>`
 
     case 'Add':
       return renderApply(

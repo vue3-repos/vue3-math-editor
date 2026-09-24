@@ -89,10 +89,11 @@ describe('pasting LaTeX', () => {
     expect(pasted('\\left|x\\right|')).toBe('|x|')
     expect(pasted('\\frac{\\mathrm{d}y}{\\mathrm{d}t}')).toBe('d{y}/d{t}')
     expect(pasted('e^{i\\pi}')).toBe('e^{ipi}')
+    // \pi is the constant; a plain e is the variable e (\mathrm{e} is Euler's number).
     expect(json({ root: latexToRow('e^{i\\pi}'), cursor: { path: [], offset: 0 } })).toEqual([
       'Power',
       'e',
-      ['Multiply', 'i', 'pi'],
+      ['Multiply', 'i', 'Pi'],
     ])
   })
 

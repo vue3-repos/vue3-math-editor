@@ -13,6 +13,7 @@
 // events.
 
 import { GREEK_NAMES, functionForSpelling, nameRuns, numberRuns } from './identifiers'
+import { constantForLatexCommand, constantForSymbol, constantForUprightText } from './constants'
 import {
   CONDITION_OPERATORS,
   combinedWithEquals,
@@ -34,7 +35,7 @@ import {
   superscript,
   symbol,
 } from './layout'
-import { getFunctionDefinition } from '../registry/nodes'
+import { functionLatex } from '../registry/nodes'
 
 export const CLIPBOARD_MIME = 'application/x-semantic-math+json'
 
@@ -153,6 +154,8 @@ const TEXT_ESCAPES: Record<string, string> = {
 function symbolLatex(value: string): string {
   if (value in OPERATOR_LATEX) return OPERATOR_LATEX[value]
   if (/^[A-Za-z0-9.+\-=,]$/.test(value)) return value
+  const constant = constantForSymbol(value)
+  if (constant) return /[a-z]$/i.test(constant.latex) ? `${constant.latex} ` : constant.latex
   if (GREEK_NAMES.has(value)) return `\\${value} `
   if (/^[A-Za-z]+$/.test(value)) return `\\mathit{${value}}`
   return `\\text{${Array.from(value, (c) => TEXT_ESCAPES[c] ?? c).join('')}}`
@@ -206,8 +209,7 @@ export function rowToLatexSource(row: Row): string {
 
 function nameLatex(name: string, functionName: string | null): string {
   if (functionName) {
-    const definition = getFunctionDefinition(functionName)
-    return definition ? `\\${definition.latexName} ` : `\\operatorname{${functionName}}`
+    return functionLatex(functionName)
   }
 
   return name.length === 1 ? name : `\\mathit{${name.replace(/_/g, '\\_')}}`
@@ -217,10 +219,8 @@ function atomLatex(atom: Atom, previous: Atom | undefined): string {
   switch (atom.kind) {
     case 'symbol':
       return symbolLatex(atom.value)
-    case 'function': {
-      const definition = getFunctionDefinition(atom.name)
-      return definition ? `\\${definition.latexName} ` : `\\operatorname{${atom.name}}`
-    }
+    case 'function':
+      return functionLatex(atom.name)
     case 'fraction':
       return `\\frac{${rowToLatexSource(atom.num)}}{${rowToLatexSource(atom.den)}}`
     case 'superscript': {
@@ -662,16 +662,24 @@ class LatexReader {
       return
     }
 
-    atoms.push(symbol(name)) // \alpha, \pi, \infty, …
+    const constant = constantForLatexCommand(name)
+    atoms.push(symbol(constant ?? name)) // \pi, \infty (constants), \alpha, …
   }
 
   private readNamed(command: string, text: string, atoms: Row): void {
     if (!text) return
 
     // The e of a number in scientific notation, as rowToLatexSource writes
-    // it (1\mathrm{e}{-08}), or an upright e on its own.
-    if (command === 'mathrm' && (text === 'e' || text === 'E')) {
+    // it (1\mathrm{e}{-08}): straight before a brace. An upright E likewise.
+    if (command === 'mathrm' && (text === 'E' || (text === 'e' && this.peek()?.kind === 'open'))) {
       atoms.push(symbol(text))
+      return
+    }
+
+    // \mathrm{e} otherwise is Euler's number; \mathrm{NaN}, \mathrm{true}, …
+    const constant = command === 'mathrm' ? constantForUprightText(text) : undefined
+    if (constant) {
+      atoms.push(symbol(constant))
       return
     }
 

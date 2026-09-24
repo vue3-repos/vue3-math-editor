@@ -119,8 +119,20 @@ is reported under the equation.
 **Rule:** a name that is *exactly* the name of a known function is that function, and is
 shown upright. A longer name that merely contains a function's name is just a name.
 
-The known functions are `sin cos tan sec csc cot`, `arcsin arccos arctan` (also typed
-`asin acos atan`), `sinh cosh tanh`, `exp`, `ln` and `log`.
+The known functions are every function CellML 2.0 allows:
+
+| Kind | Functions |
+|---|---|
+| Exponentials and logarithms | `exp`, `ln`, `log` |
+| Rounding and comparison | `floor`, `ceiling` (or `ceil`), `min`, `max`, `rem` (remainder) |
+| Trigonometric | `sin cos tan sec csc cot` |
+| Inverse trigonometric | `arcsin arccos arctan arcsec arccsc arccot` (or `asin acos atan asec acsc acot`) |
+| Hyperbolic | `sinh cosh tanh sech csch coth` |
+| Inverse hyperbolic | `arcsinh arccosh arctanh arcsech arccsch arccoth` (or `asinh`, …) |
+
+`min` and `max` take any number of arguments, `rem` takes two (`rem(n,2)`), and `log`
+takes one or two. So `floor`, `min`, `max` and `rem` can't be used as variable names;
+`Vmax` or `t_min` are fine.
 
 | You type | Meaning |
 |---|---|
@@ -148,9 +160,24 @@ declaring your own functions may come later.
 ## Greek letters
 
 Type a backslash and the letter's name, then press Space or Enter: `\alpha`, `\beta`,
-`\pi`, `\Omega`. Typing the letters `alpha` without the backslash gives a variable called
+`\Omega`. Typing the letters `alpha` without the backslash gives a variable called
 `alpha`, shown in italics, not α. A Greek letter is always its own name, so `\alpha`
-followed by `x` is α × x.
+followed by `x` is α × x. The one exception is π, which is always the constant (below).
+
+## Constants
+
+| Type | Shown as | Meaning |
+|---|---|---|
+| `\pi` | π | π |
+| `\e` (or `\exponentiale`) | e (upright) | Euler's number |
+| `\inf` (or `\infty`, `\infinity`) | ∞ | infinity |
+| `\nan` (or `\notanumber`) | NaN | not a number |
+| `\true`, `\false` | true, false | the logical constants |
+
+The toolbar has buttons for π, e and ∞. A typed letter `e` is a variable called e, shown
+in italics; only `\e` gives Euler's number, shown upright as in print. Likewise the typed
+letters `pi` are a variable called pi. Constants export as MathML's own elements (`<pi/>`,
+`<exponentiale/>`, `<infinity/>`, …), so in CellML they need no units.
 
 ## Operators and how things group
 
@@ -367,6 +394,8 @@ Type `\`, the command's name, then Space, Enter, Tab or `(`. Esc cancels.
 | `\sin`, `\log`, … | the function with empty brackets: sin(☐) |
 | `\alpha`, `\pi`, … | the Greek letter |
 | `\le`, `\and`, `\not`, … | a comparison or logical operator (see *Conditions*) |
+| `\pi`, `\e`, `\inf`, `\nan`, `\true`, `\false` | a constant (see *Constants*) |
+| `\cases` (or `\piecewise`), `\otherwise` | a piecewise definition, or its otherwise |
 | anything else | the name typed out as letters (`\speed` gives `speed`) |
 
 ## Not supported yet

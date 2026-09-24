@@ -1,3 +1,5 @@
+import { constantForSymbol } from '../editor/constants'
+import { getFunctionDefinition } from '../registry/nodes'
 import type { AstNode } from '../types/ast'
 
 export type MathJsonValue =
@@ -7,26 +9,8 @@ export type MathJsonValue =
   | MathJsonValue[]
   | { [key: string]: MathJsonValue }
 
-const FUNCTION_OPERATOR_MAP: Record<string, string> = {
-  exp: 'Exp',
-  log: 'Log',
-  ln: 'Ln',
-  sin: 'Sin',
-  cos: 'Cos',
-  tan: 'Tan',
-  sec: 'Sec',
-  csc: 'Csc',
-  cot: 'Cot',
-  asin: 'Arcsin',
-  acos: 'Arccos',
-  atan: 'Arctan',
-  sinh: 'Sinh',
-  cosh: 'Cosh',
-  tanh: 'Tanh',
-}
-
 function functionNameToOperator(name: string): string {
-  return FUNCTION_OPERATOR_MAP[name.toLowerCase()] ?? name
+  return getFunctionDefinition(name)?.mathJson ?? name
 }
 
 export function astToMathJson(node: AstNode): MathJsonValue {
@@ -36,6 +20,9 @@ export function astToMathJson(node: AstNode): MathJsonValue {
 
     case 'Identifier':
       return node.name
+
+    case 'Constant':
+      return constantForSymbol(node.name)!.mathJson
 
     case 'Add':
       return ['Add', ...node.children.map(astToMathJson)]

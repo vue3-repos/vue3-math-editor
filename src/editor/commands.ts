@@ -38,6 +38,7 @@ import {
 } from './layout'
 import { collapseSelection, selectionOf } from './selection'
 import { GREEK_NAMES, functionForSpelling } from './identifiers'
+import { constantForCommand } from './constants'
 import { combinedWithEquals, conditionOperatorForCommand } from './operators'
 import { getFunctionDefinition } from '../registry/nodes'
 
@@ -760,6 +761,9 @@ export function namedCommand(name: string): Command {
 
   const operator = conditionOperatorForCommand(name)
   if (operator) return insertSymbol(operator.symbol)
+
+  const constant = constantForCommand(name)
+  if (constant) return insertSymbol(constant.symbol)
 
   const spelled = functionForSpelling(name)
   if (spelled) return insertFunction(spelled)

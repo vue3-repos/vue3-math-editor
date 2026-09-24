@@ -16,6 +16,7 @@
 // rendering.
 
 import { type Atom, type Row, childRows } from './layout'
+import { constantForSymbol } from './constants'
 import { type NumberRun, numberAt } from './numbers'
 import { FUNCTION_REGISTRY } from '../registry/nodes'
 
@@ -32,6 +33,7 @@ const FUNCTION_SPELLINGS = new Map<string, string>()
 for (const definition of Object.values(FUNCTION_REGISTRY)) {
   FUNCTION_SPELLINGS.set(definition.name, definition.name)
   FUNCTION_SPELLINGS.set(definition.latexName, definition.name)
+  for (const alias of definition.aliases ?? []) FUNCTION_SPELLINGS.set(alias, definition.name)
 }
 
 // The function a spelling names ("sin", "arcsin" -> "asin"), if any.
@@ -130,8 +132,11 @@ export function nameOccurrences(root: Row, name: string): string[][] {
         continue
       }
 
-      // A whole-word symbol, such as a Greek letter ("alpha").
-      if (atom.kind === 'symbol' && atom.value === name) found.push([atom.id])
+      // A whole-word symbol, such as a Greek letter ("alpha"), but not a
+      // constant (π is never a variable).
+      if (atom.kind === 'symbol' && atom.value === name && !constantForSymbol(name)) {
+        found.push([atom.id])
+      }
 
       for (const [, child] of childRows(atom)) visit(child)
     }

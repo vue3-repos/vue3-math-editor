@@ -251,3 +251,39 @@ test.describe('conditions', () => {
     await expect(wb.page.locator('[data-role="diagnostics"]')).toContainText("can't be chained")
   })
 })
+
+test.describe('constants and functions', () => {
+  test('\\pi, \\e and \\inf insert the constants', async () => {
+    await wb.type('A=\\pi r^2')
+    await wb.press(' ')
+    await wb.type('+\\e ^x')
+    await wb.press(' ')
+    await wb.type('+\\inf ')
+    await wb.expectMathJson([
+      'Equal',
+      'A',
+      [
+        'Add',
+        ['Multiply', 'Pi', ['Power', 'r', 2]],
+        ['Power', 'ExponentialE', 'x'],
+        { num: '+Infinity' },
+      ],
+    ])
+    const mathml = wb.page.locator('[data-role="mathml"]')
+    for (const tag of ['<pi/>', '<exponentiale/>', '<infinity/>']) {
+      await expect(mathml).toContainText(tag)
+    }
+  })
+
+  test('the toolbar inserts π', async () => {
+    await wb.type('2')
+    await wb.page.locator('[data-role="constant-buttons"] button[title^="Pi"]').click()
+    await wb.expectMathJson(['Multiply', 2, 'Pi'])
+  })
+
+  test('floor, ceiling, min, max and rem are functions', async () => {
+    await wb.type('floor(x)+max(a,b)+rem(n,2)')
+    await wb.expectMathJson(['Add', ['Floor', 'x'], ['Max', 'a', 'b'], ['Remainder', 'n', 2]])
+    await expect(wb.page.locator('[data-role="mathml"]')).toContainText('<rem/>')
+  })
+})

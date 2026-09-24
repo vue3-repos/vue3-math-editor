@@ -294,6 +294,17 @@ const operatorButtons: ToolButton[] = [
   { latex: '=', title: 'Equals  ( = )', command: insertSymbol('=') },
 ]
 
+// Constants (CellML's <pi/>, <exponentiale/>, <infinity/>).
+const constantButtons: ToolButton[] = [
+  { latex: '\\pi', title: 'Pi  ( \\pi )', command: insertSymbol('pi') },
+  {
+    latex: '\\mathrm{e}',
+    title: "Euler's number e  ( \\e )",
+    command: insertSymbol('exponentiale'),
+  },
+  { latex: '\\infty', title: 'Infinity  ( \\inf )', command: insertSymbol('infinity') },
+]
+
 // Comparisons and logic, for conditions.
 const conditionButtons: ToolButton[] = [
   { latex: '<', title: 'Less than  ( < )', command: insertSymbol('<') },
@@ -484,6 +495,20 @@ function toggleCopyMenu(event: Event) {
             </button>
           </div>
 
+          <div class="toolbar-group" data-role="constant-buttons">
+            <button
+              v-for="item in constantButtons"
+              :key="item.title"
+              type="button"
+              class="tool-button tool-button-op"
+              :title="item.title"
+              @mousedown.prevent
+              @click="run(item.command)"
+            >
+              <span v-html="buttonHtml(item.latex)"></span>
+            </button>
+          </div>
+
           <div class="toolbar-group" data-role="condition-buttons">
             <button
               v-for="item in conditionButtons"
@@ -620,7 +645,7 @@ function toggleCopyMenu(event: Event) {
           and <code>_</code> with no operator between them are one name (<code>Vm_init</code>);
           multiply names with <code>*</code> (<code>a*b</code>) · a name spelling a function
           (<code>sin</code>, <code>cosh</code>, …) is that function · <code>\</code> commands (<code
-            >\frac \sqrt \root \abs \dd \cases \sin \alpha</code
+            >\frac \sqrt \root \abs \dd \cases \sin \pi \e \inf \alpha</code
           >
           …) · <kbd>Backspace</kbd>/<kbd>Delete</kbd> delete · <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo
         </p>

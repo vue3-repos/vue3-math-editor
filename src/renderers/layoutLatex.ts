@@ -13,6 +13,7 @@
 import type { Atom, Row, RowPath, RowPathSegment } from '../editor/layout'
 import { rowPathsEqual } from '../editor/layout'
 import { GREEK_NAMES, nameRuns, numberRuns } from '../editor/identifiers'
+import { constantForSymbol } from '../editor/constants'
 import { CONDITION_OPERATORS } from '../editor/operators'
 import { getFunctionDefinition } from '../registry/nodes'
 
@@ -120,6 +121,8 @@ function renderSymbol(id: string, value: string): string {
   if (value in RELATION) return `\\mathrel{${tag(id, RELATION[value])}}`
   if (value === ',') return `\\mathpunct{${tag(id, ',')}}`
   if (value in PREFIX) return tag(id, PREFIX[value])
+  const constant = constantForSymbol(value)
+  if (constant) return tag(id, constant.latex)
   if (/^[0-9.]$/.test(value) || /^[A-Za-z]$/.test(value)) return tag(id, value)
   if (GREEK_NAMES.has(value)) return tag(id, `\\${value}`)
   if (/^[A-Za-z]+$/.test(value)) return tag(id, `\\mathit{${value}}`)
