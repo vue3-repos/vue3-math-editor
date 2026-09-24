@@ -97,9 +97,9 @@ describe('exporting scientific numbers', () => {
     expect(mathml).toContain('    <cn type="e-notation">1<sep/>-8</cn>\n')
   })
 
-  it('CellML mode adds the units placeholder', () => {
+  it('CellML mode adds the units, dimensionless by default', () => {
     expect(contentMathML(typed('1.5E3'), { cellml: true })).toContain(
-      '<cn cellml:units="undefined" type="e-notation">1.5<sep/>3</cn>',
+      '<cn cellml:units="dimensionless" type="e-notation">1.5<sep/>3</cn>',
     )
   })
 

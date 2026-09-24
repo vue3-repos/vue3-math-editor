@@ -255,6 +255,10 @@ function renderAtom(
         `\\frac{\\mathrm{d}${child(atom.expr, 'expr')}}{\\mathrm{d}${child(atom.variable, 'variable')}}`,
       )
 
+    case 'units':
+      // A thin space, then the units name upright and grey: 0.25 mV.
+      return tag(atom.id, `\\,${renderUnitsRow(atom.units, childPath('units'), options)}`)
+
     case 'piecewise': {
       // One line per piece, value & condition; otherwise's condition cell is
       // the word "otherwise", which is not a row.
@@ -268,6 +272,30 @@ function renderAtom(
       return tag(atom.id, `\\begin{cases}${lines.join(' \\\\ ')}\\end{cases}`)
     }
   }
+}
+
+// A number's units row: each character upright (\mathrm), not read as names
+// or operators, in the me-units class (grey).
+function renderUnitsRow(row: Row, path: RowPath, options: LayoutLatexOptions): string {
+  if (row.length === 0) return renderRow(row, path, options)
+
+  const glyphs = row.map((atom, index) => {
+    const childPath = (branch: RowPathSegment['branch']): RowPath => [
+      ...path,
+      { atom: index, branch },
+    ]
+    if (atom.kind === 'superscript') {
+      return `{}^{${tag(atom.id, renderRow(atom.sup, childPath('sup'), options))}}`
+    }
+    if (atom.kind !== 'symbol') return renderAtom(atom, childPath, options)
+    if (/^[A-Za-z0-9]$/.test(atom.value)) return tag(atom.id, `\\mathrm{${atom.value}}`)
+    if (atom.value === '_') return tag(atom.id, '\\_')
+    // Anything else (an operator typed by mistake) as usual; the parser
+    // reports that the units name isn't valid.
+    return renderSymbol(atom.id, atom.value)
+  })
+
+  return `\\htmlData{row=${encodeRowPath(path)}}{\\htmlClass{me-units}{${glyphs.join('')}}}`
 }
 
 // KaTeX options the editor surface needs: \htmlData / \htmlClass must be

@@ -138,6 +138,40 @@ export function nameOccurrences(root: Row, name: string): string[][] {
         found.push([atom.id])
       }
 
+      // A units name is not a variable.
+      if (atom.kind === 'units') continue
+      for (const [, child] of childRows(atom)) visit(child)
+    }
+  }
+
+  visit(root)
+  return found
+}
+
+export interface NumberOccurrence {
+  value: number
+  // The number's atoms, and its units atom if it has one.
+  atomIds: string[]
+  // The name in its units atom, if it has one.
+  units: string | null
+}
+
+// Every number in an equation, at any depth.
+export function numberOccurrences(root: Row): NumberOccurrence[] {
+  const found: NumberOccurrence[] = []
+
+  const visit = (row: Row) => {
+    for (const run of numberRuns(row)) {
+      const after = row[run.end]
+      const unitsAtom = after?.kind === 'units' ? after : null
+      const atoms = row.slice(run.start, run.end + (unitsAtom ? 1 : 0))
+      const units = unitsAtom
+        ? unitsAtom.units.map((a) => (a.kind === 'symbol' ? a.value : '')).join('')
+        : null
+      found.push({ value: Number(run.text), atomIds: atoms.map((a) => a.id), units })
+    }
+    for (const atom of row) {
+      if (atom.kind === 'units') continue
       for (const [, child] of childRows(atom)) visit(child)
     }
   }

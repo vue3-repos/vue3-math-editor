@@ -1,8 +1,31 @@
 <script setup lang="ts">
+import { ref } from 'vue'
+
 import EquationWorkbench from './components/EquationWorkbench.vue'
+import type { EquationLine, UnitsIssue, VariableUnits } from './editor/units'
 
 // Demo switch: open the page with ?cellml for CellML mode.
 const cellml = new URLSearchParams(window.location.search).has('cellml')
+
+// The units interface, driven from outside for now (the browser tests use
+// it): window.__workbench.lines is the latest equations-change payload, and
+// window.__workbench.setUnits({ issues, variableUnits }) sets those props. A
+// units checker (such as libCellML) will take this place.
+const issues = ref<UnitsIssue[]>([])
+const variableUnits = ref<VariableUnits | undefined>(undefined)
+const lines = ref<EquationLine[]>([])
+
+Object.assign(window, {
+  __workbench: {
+    get lines() {
+      return lines.value
+    },
+    setUnits(units: { issues?: UnitsIssue[]; variableUnits?: VariableUnits }) {
+      issues.value = units.issues ?? []
+      variableUnits.value = units.variableUnits
+    },
+  },
+})
 </script>
 
 <template>
@@ -12,7 +35,12 @@ const cellml = new URLSearchParams(window.location.search).has('cellml')
       <p>Canonical AST editing for LaTeX and Content MathML output.</p>
     </section>
 
-    <EquationWorkbench :cellml="cellml" />
+    <EquationWorkbench
+      :cellml="cellml"
+      :issues="issues"
+      :variable-units="variableUnits"
+      @equations-change="lines = $event"
+    />
   </main>
 </template>
 

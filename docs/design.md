@@ -13,7 +13,7 @@ else drives where an edit lands.
    lists of atoms exactly as the user sees them left to right. A symbol atom is one typed
    glyph (a digit, a letter, an operator); a multi-digit number or a multi-letter name is
    several symbol atoms. Structure atoms (fraction, superscript, root, brackets,
-   derivative, piecewise) own named child rows. See `editor/layout.ts`.
+   derivative, piecewise, a number's units) own named child rows. See `editor/layout.ts`.
 2. **The semantic tree is derived.** After every change the parser turns the rows into an
    `AstNode` (`types/ast.ts`), which the MathJSON, Content MathML and output panels use.
    Editing never manipulates operator precedence directly.
@@ -57,6 +57,8 @@ else drives where an edit lands.
 | `editor/numbers.ts` | Which runs of characters are numbers, including scientific notation |
 | `editor/operators.ts` | Comparison and logical operators |
 | `editor/constants.ts` | π, e, ∞, NaN, true, false |
+| `editor/marks.ts` | Marks: underlines (parse errors, units issues) and hover hints |
+| `editor/units.ts` | The units interface: lines reported to a host, issues and hints shown from it |
 | `registry/nodes.ts` | The known functions: MathML tags, MathJSON names, LaTeX names |
 | `editor/clipboard.ts` | Copy, cut and paste; LaTeX in and out |
 | `editor/exports.ts` | "Copy as" and the output panels' Content MathML, including CellML mode |
@@ -142,6 +144,17 @@ these notes cover how they are implemented.
   allows alongside `real`. A plain number that JavaScript prints in exponent form
   (`0.0000001`) is written the same way, since a `type="real"` `<cn>` can't hold an
   exponent. MathJSON writes the number (`1e-8`). LaTeX is `1\mathrm{e}{-08}`.
+- **Units:** a `UnitsAtom` straight after a number gives it units: `0.25{mV}`. Its row
+  holds the units name typed as characters, so the cursor and editing work as in any
+  structure; it is drawn upright and grey after a thin space (`me-units`), and its
+  characters are never names or operators (`nameOccurrences` skips it). The parser attaches
+  it to the number before it (`Number.units`); units anywhere else, or an empty or invalid
+  name (not a CellML identifier), are diagnostics. A number without units is
+  dimensionless: CellML mode writes `cellml:units="dimensionless"` (`DEFAULT_NUMBER_UNITS`).
+  Typed with `{` (or `\units`), left with `}` or Space; Backspace at the start of the units
+  steps out rather than dissolving them, since the name would become a variable. LaTeX is
+  `0.25\,\mathrm{mV}`, and pasting reads that, `0.25{mV}` and CellML Text's
+  `0.25 {units: mV}`. MathJSON has the number only.
 
 ### Conditions
 
@@ -266,6 +279,7 @@ grouping).
 | digits, letters, `_ . + - = ,` | Insert at the cursor. `*` inserts `·`; `<` `>` insert themselves, `&` inserts ∧, `!` inserts ¬, and `=` after `<`, `>` or `¬` combines into ≤, ≥, ≠. |
 | `/` | The operand before the cursor (back to the previous operator) becomes the numerator; the cursor goes to the denominator. `(x+1)/` drops the brackets. With nothing before the cursor, the cursor goes to an empty numerator. |
 | `^` | Enters the adjacent superscript if there is one, otherwise adds one. |
+| `{` `}` | `{` gives the number before the cursor its units, with the cursor inside to type the name; `}` leaves them. |
 | `(` `)` | `(` inserts an empty group with the cursor inside (after `floor` or `ceil`, the name becomes ⌊ ⌋ or ⌈ ⌉). `)` leaves the enclosing round, floor or ceiling brackets; typed directly inside them, the atoms after the cursor move out (`(x‸+1` → `(x)‸+1`). |
 | `\|` | Closes the absolute value the cursor is directly inside, otherwise opens one. |
 | Space | Steps out of the innermost structure. |
@@ -372,8 +386,8 @@ output panels show the same text for the whole active equation.
 consumers get plain Content MathML. When it is on, the Content MathML panel and "Copy as"
 (labelled "Content MathML (CellML)") produce MathML ready for a CellML 2.0 model: the
 root `<math>` also declares `xmlns:cellml="http://www.cellml.org/cellml/2.0#"`, and every
-number is written `<cn cellml:units="undefined">2</cn>`, a placeholder for its real units,
-which CellML requires on every `<cn>`. The option is `{ cellml: true }` on `exportRow`,
+number carries `cellml:units`, which CellML requires on every `<cn>`: its own units
+(`0.25{mV}`), or `dimensionless`. The option is `{ cellml: true }` on `exportRow`,
 `contentMathML` and `astToContentMathML`; MathJSON and LaTeX ignore it. In the demo app,
 open the page with `?cellml` to turn it on.
 
@@ -382,8 +396,11 @@ Copy as uses the async clipboard API (`text/plain` only), falling back to
 
 ## Marking problems
 
-Problems are underlined in the field: a red wavy line under the atoms, with the message
-in a tooltip when the pointer is over it.
+Problems are underlined in the field, with the message in a tooltip when the pointer is
+over them. A mark (`editor/marks.ts`) has a kind: `error` (a parse problem, red), `units`
+(a units issue from a host, amber) or `hint` (information such as a variable's units,
+shown on hover with no underline). Where a problem and a hint overlap, the problem's
+message is shown.
 
 - **MathField takes `marks`.** Any `{ message, atomIds }` can be marked; a parser
   diagnostic is one. The underline box is the painted extent of the atoms. The tooltip is
@@ -411,30 +428,60 @@ in a tooltip when the pointer is over it.
   `npm run test:e2e:visual -- --update-snapshots`.
 - One-off setup after `npm install`: `npx playwright install chromium`.
 
-## Future work: units checking with libCellML
+## Units checking
 
-Dimensional analysis will be done by libCellML, not the editor: it takes the Content
-MathML and reports which variables, by name, have incompatible units, and in which
-equation. Nothing is built yet; these notes record how the editor should fit around it.
+Units checking is done outside the editor, so the editor stays a plain equation editor and
+libCellML is never a dependency of it. The two meet only at the workbench's interface,
+described for users of the component in [Component interface](component-interface.md).
 
-- **Mapping a report back to the equation needs no parser changes.** libCellML reports
-  names, not positions. `nameOccurrences(root, name)` (`editor/identifiers.ts`) returns
-  the atoms of every occurrence of a variable name in a line, at any depth; a Greek letter
-  and the same name typed out both match, as both export as that name, and constants
-  never match. The host maps the reported equation to a workbench line and passes the
-  occurrences to that line's MathField as `marks`, alongside the parser's.
-- **Telling the two apart.** If units issues should look different from parser errors
-  (say, amber rather than red), a mark gains a `kind`; nothing else changes.
-- **Names are already valid CellML identifiers.** Names are `[A-Za-z][A-Za-z0-9_]*`,
-  which matches CellML's identifier rule, and Greek letters are exported by name
-  (`<ci>alpha</ci>`). An empty slot exports as `<ci>_</ci>`, which is not a valid
-  identifier, so incomplete equations should not be sent.
+**The editor's side (done)** is `editor/units.ts`:
+
+- **Lines out.** Each line has a stable id (`line-1`, …; kept in undo history), so issues
+  stay on the right line as lines are added or removed. `equations-change` reports every
+  line whenever any line's content changes: its id, its Content MathML in CellML mode,
+  the variables it uses (from the AST), the units names its numbers use, and whether it
+  is complete (no parse problems, no placeholders). Lines are cached by row, so moving
+  the cursor neither recomputes nor re-emits.
+- **Issues in.** The `issues` prop gives problems by line id and variable names (and
+  optionally numbers, by value). `unitsIssueMarks` finds every occurrence with
+  `nameOccurrences` / `numberOccurrences` and makes `units` marks; the workbench adds them
+  to the line's parse marks and lists the active line's issues under the equations.
+- **Hints in.** The `variableUnits` prop (name → units) gives hover hints for variables,
+  and with it numbers show their own units (or dimensionless) on hover.
+- Names are already valid CellML identifiers: `[A-Za-z][A-Za-z0-9_]*`, and Greek letters
+  export by name (`<ci>alpha</ci>`).
+
+**The checker (next)** is a separate, optional module using libCellML (libcellml.js),
+which the host provides through the vue3-libcellml.js plugin (`inject('$libcellml')`); if
+it isn't installed, there is no units checking and nothing else changes. Plan:
+
+- A units library: load the user's CellML units files and keep only their `<units>`.
+  New units go out as a separate units-only CellML file, emitted to the host rather than
+  written into a source file.
+- A check model per edit: one component per complete line (so libCellML's message names the
+  line), a variable per name used with its units, and the line's MathML.
+- Analyse, keep the units issues, and map them to `UnitsIssue`s.
+
+Findings from trying libcellml.js 0.7.1 on the editor's output:
+
+- The analyser's units check works on it, including piecewise, scientific numbers and
+  constants. Units problems are warnings with reference rule 112 (`ANALYSER_UNITS`), for
+  example: `The units in 't+2.0' in equation 'x = t+2.0' in component 'line_1' are not
+  equivalent. 't' is in 'second' while '2.0' is 'dimensionless'.` Other analyser issues
+  (unknown variable types, uninitialised states) are about the model, not the equation,
+  and are ignored.
+- Units issues have no structured location (`issue.item()` is `UNDEFINED`), so the
+  variables come from parsing the message. Structured units issues in libCellML (the
+  variables, or the AST node, involved) would remove that.
+- The analyser only runs on a valid model: an unknown units name on a `<cn>` stops it,
+  hence numbers defaulting to dimensionless.
+- Loading takes about 75 ms and analysis about 20–30 ms per equation, so checking only the
+  edited line, after a pause, is enough. The WebAssembly is about 2.3 MB (640 KB gzipped).
 
 ## Open questions
 
-- **Units for numbers.** CellML mode writes `cellml:units="undefined"`. How a number gets
-  its real units (set by the host, entered by the user, or suggested from libCellML's
-  analysis) is open, and is the one question that touches the editor's semantics.
+- **Where new units go.** Units the user defines while writing equations: into a
+  separate units-only CellML file (the current plan), or back into a source units file.
 - **Subscripts in names.** The underscore is shown literally while the convention for
   formatting variable names (subscripts, and superscripts within them) is undecided.
 - **Boolean-valued equations.** Because `=` is a comparison, `b = x < 1` is a chained

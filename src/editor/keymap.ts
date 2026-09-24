@@ -6,11 +6,13 @@ import {
   type Command,
   absBar,
   closeParen,
+  closeUnits,
   deleteBackward,
   deleteForward,
   exitStructure,
   insertFraction,
   insertSuperscript,
+  insertUnits,
   insertSymbol,
   newPiece,
   nextPlaceholder,
@@ -50,6 +52,10 @@ export function commandForKey(event: KeyLike): Command | null {
       return openParen
     case ')':
       return closeParen
+    case '{':
+      return insertUnits
+    case '}':
+      return closeUnits
     case '|':
       return absBar
     case ' ':

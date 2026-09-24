@@ -111,6 +111,9 @@ export function show(state: EditorState): string {
         case 'derivative':
           out += `d{${child('expr')}}/d{${child('variable')}}`
           break
+        case 'units':
+          out += `{${child('units')}}`
+          break
         case 'piecewise': {
           // {value0 : cond0; value1 : cond1; otherwise}
           const pieces = atom.pieces.map((_, i) => `${child(`value${i}`)} : ${child(`cond${i}`)}`)

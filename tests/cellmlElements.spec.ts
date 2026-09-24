@@ -72,7 +72,7 @@ describe('constants', () => {
 
   it('need no units in CellML mode', () => {
     expect(contentMathML(row('2', symbol('pi')), { cellml: true })).toMatch(
-      /<cn cellml:units="undefined">2<\/cn>\s*<pi\/>/,
+      /<cn cellml:units="dimensionless">2<\/cn>\s*<pi\/>/,
     )
   })
 

@@ -105,13 +105,13 @@ test.describe('CellML mode', () => {
     await expect(wb.page.locator('[data-role="cellml-mode"]')).toBeVisible()
     const panel = wb.page.locator('[data-role="mathml"]')
     await expect(panel).toContainText('xmlns:cellml="http://www.cellml.org/cellml/2.0#"')
-    await expect(panel).toContainText('<cn cellml:units="undefined">2</cn>')
+    await expect(panel).toContainText('<cn cellml:units="dimensionless">2</cn>')
   })
 
   test('copies CellML-ready Content MathML', async () => {
     await wb.type('y=2x')
     await copyAs('Content MathML (CellML)')
-    await expect.poll(readClipboard).toContain('<cn cellml:units="undefined">2</cn>')
+    await expect.poll(readClipboard).toContain('<cn cellml:units="dimensionless">2</cn>')
     await expect.poll(readClipboard).toContain('xmlns:cellml="http://www.cellml.org/cellml/2.0#"')
   })
 })

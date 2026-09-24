@@ -7,7 +7,7 @@
 //
 // CellML mode (`{ cellml: true }`) makes the Content MathML ready for a CellML
 // model: the root <math> declares the CellML namespace, and every number
-// carries `cellml:units="undefined"` as a placeholder for its real units.
+// carries `cellml:units`: its own units (0.25{mV}), or dimensionless.
 
 import { rowToLatexSource } from './clipboard'
 import type { Row } from './layout'

@@ -43,7 +43,7 @@ describe('Content MathML', () => {
 describe('Content MathML in CellML mode', () => {
   const cellml = { cellml: true }
 
-  it('declares the CellML namespace and gives every number placeholder units', () => {
+  it('declares the CellML namespace and gives every number dimensionless units by default', () => {
     expect(contentMathML(latexToRow('y=2x+1'), cellml)).toBe(
       [
         '<math xmlns="http://www.w3.org/1998/Math/MathML" xmlns:cellml="http://www.cellml.org/cellml/2.0#">',
@@ -54,10 +54,10 @@ describe('Content MathML in CellML mode', () => {
         '      <plus/>',
         '      <apply>',
         '        <times/>',
-        '        <cn cellml:units="undefined">2</cn>',
+        '        <cn cellml:units="dimensionless">2</cn>',
         '        <ci>x</ci>',
         '      </apply>',
-        '      <cn cellml:units="undefined">1</cn>',
+        '      <cn cellml:units="dimensionless">1</cn>',
         '    </apply>',
         '  </apply>',
         '</math>',
@@ -67,7 +67,7 @@ describe('Content MathML in CellML mode', () => {
 
   it('reaches numbers at any depth', () => {
     const mathml = contentMathML(latexToRow('\\sqrt[3]{x}+\\log(x,2)+\\frac{1}{2}'), cellml)
-    expect(mathml.match(/<cn cellml:units="undefined">/g)).toHaveLength(4)
+    expect(mathml.match(/<cn cellml:units="dimensionless">/g)).toHaveLength(4)
     expect(mathml).not.toMatch(/<cn>/)
   })
 
@@ -78,7 +78,7 @@ describe('Content MathML in CellML mode', () => {
     )
     expect(doc.getElementsByTagName('parsererror')).toHaveLength(0)
     const cn = doc.getElementsByTagName('cn')[0]
-    expect(cn.getAttributeNS(CELLML_NAMESPACE, 'units')).toBe('undefined')
+    expect(cn.getAttributeNS(CELLML_NAMESPACE, 'units')).toBe('dimensionless')
     expect(cn.textContent).toBe('3.5')
   })
 

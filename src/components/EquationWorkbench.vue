@@ -9,12 +9,18 @@
 // line) and command mode. The semantic AST shown in the output panels is
 // parsed from the active line's layout tree.
 //
-// Props:
-// - `cellml`: CellML mode. The Content MathML (output panel and "Copy as")
-//   declares the CellML namespace on <math> and gives every number
-//   cellml:units="undefined", a placeholder for its real units. Off by
-//   default, so other consumers get plain Content MathML.
-import { computed, nextTick, ref, toRaw } from 'vue'
+// Interface (see docs/component-interface.md):
+// - `cellml` prop: CellML mode. The Content MathML (output panel and "Copy
+//   as") declares the CellML namespace on <math> and gives every number
+//   cellml:units (its own, or dimensionless). Off by default, so other
+//   consumers get plain Content MathML.
+// - `equations-change` event: every line (a stable id, its CellML-mode
+//   Content MathML, the variables it uses, whether it's complete), whenever
+//   any line's content changes. For a units checker outside the editor.
+// - `issues` prop: units issues to underline, by line id and variable names.
+// - `variableUnits` prop: each variable's units, shown on hover; with it,
+//   numbers show their units on hover too.
+import { computed, nextTick, ref, toRaw, watch } from 'vue'
 import katex from 'katex'
 import Button from 'primevue/button'
 import Card from 'primevue/card'
@@ -43,16 +49,40 @@ import {
 import { cursorAtEnd, describeCursor } from '../editor/cursor'
 import { EXPORT_FORMATS, type ExportFormat, contentMathML, exportRow } from '../editor/exports'
 import { type EditInfo, History, OTHER_EDIT, undoGroup } from '../editor/history'
+import {
+  type EquationLine,
+  type UnitsIssue,
+  type VariableUnits,
+  equationLine,
+  unitsHintMarks,
+  unitsIssueMarks,
+} from '../editor/units'
 import type { Row } from '../editor/layout'
 import { parseRow } from '../editor/parse'
 import { describeSelection, selectedAtoms, selectionOf } from '../editor/selection'
 import { renderMathJson } from '../renderers/mathjson'
 
-const props = withDefaults(defineProps<{ cellml?: boolean }>(), { cellml: false })
+const props = withDefaults(
+  defineProps<{
+    cellml?: boolean
+    issues?: readonly UnitsIssue[]
+    variableUnits?: VariableUnits
+  }>(),
+  { cellml: false, issues: () => [], variableUnits: undefined },
+)
+
+const emit = defineEmits<{
+  'equations-change': [lines: EquationLine[]]
+}>()
 
 const exportOptions = computed(() => ({ cellml: props.cellml }))
 
 const equations = ref<EditorState[]>([emptyState()])
+// Each line's id, parallel to `equations`: stable while the line exists, so a
+// host's issues stay on the right line when lines are added or removed.
+let lineCount = 0
+const newLineId = () => `line-${++lineCount}`
+const lineIds = ref<string[]>([newLineId()])
 const activeIndex = ref(0)
 const fieldRefs = ref<Array<InstanceType<typeof MathField> | null>>([])
 
@@ -77,6 +107,7 @@ function focusActive() {
 
 interface Snapshot {
   equations: EditorState[]
+  lineIds: string[]
   active: number
 }
 
@@ -86,7 +117,11 @@ const historyVersion = ref(0)
 
 function takeSnapshot(): Snapshot {
   return JSON.parse(
-    JSON.stringify({ equations: equations.value, active: activeIndex.value }),
+    JSON.stringify({
+      equations: equations.value,
+      lineIds: lineIds.value,
+      active: activeIndex.value,
+    }),
   ) as Snapshot
 }
 
@@ -99,6 +134,7 @@ function pushHistory(line = activeIndex.value, info: EditInfo = OTHER_EDIT) {
 function restore(snapshot: Snapshot | null) {
   if (!snapshot) return
   equations.value = snapshot.equations
+  lineIds.value = snapshot.lineIds
   activeIndex.value = Math.min(snapshot.active, snapshot.equations.length - 1)
   historyVersion.value++
   focusActive()
@@ -154,6 +190,7 @@ function addLineAfterActive() {
   pushHistory()
   const index = activeIndex.value + 1
   equations.value.splice(index, 0, emptyState())
+  lineIds.value.splice(index, 0, newLineId())
   activeIndex.value = index
   focusActive()
 }
@@ -170,6 +207,7 @@ function removeActiveLine() {
 
   pushHistory()
   equations.value.splice(activeIndex.value, 1)
+  lineIds.value.splice(activeIndex.value, 1)
   activeIndex.value = Math.max(0, activeIndex.value - 1)
   // Continue at the end of the line above.
   const state = active()
@@ -348,9 +386,68 @@ function parseLine(root: Row) {
   }
   return result
 }
-const NO_MARKS: readonly Mark[] = []
 const parsedLines = computed(() => equations.value.map((equation) => parseLine(equation.root)))
 const parsed = computed(() => parsedLines.value[activeIndex.value] ?? null)
+
+// Each line's marks: its parse problems, the host's units issues for it, and
+// units hints if the host gave variable units. Cached by row, and rebuilt
+// when the issues or units change, so moving the cursor hands MathField the
+// same array.
+const issuesByLine = computed(() => {
+  const byLine = new Map<string, UnitsIssue[]>()
+  for (const issue of props.issues) {
+    byLine.set(issue.lineId, [...(byLine.get(issue.lineId) ?? []), issue])
+  }
+  return byLine
+})
+const marksCache = computed(() => {
+  // Read here so the cache is replaced when either changes.
+  void issuesByLine.value
+  void props.variableUnits
+  return new WeakMap<Row, Mark[]>()
+})
+const lineMarks = computed(() =>
+  equations.value.map((equation, index) => {
+    const root = equation.root
+    let marks = marksCache.value.get(root)
+    if (!marks) {
+      marks = [
+        ...(parsedLines.value[index]?.diagnostics ?? []),
+        ...unitsIssueMarks(root, issuesByLine.value.get(lineIds.value[index]) ?? []),
+        ...(props.variableUnits ? unitsHintMarks(root, props.variableUnits) : []),
+      ]
+      marksCache.value.set(root, marks)
+    }
+    return marks
+  }),
+)
+const unitsIssues = computed(() => issuesByLine.value.get(lineIds.value[activeIndex.value]) ?? [])
+
+// Every line for the `equations-change` event, emitted when any line's
+// content (not just its cursor) changes.
+const lineCache = new WeakMap<Row, EquationLine>()
+const lines = computed(() =>
+  equations.value.map((equation, index) => {
+    const id = lineIds.value[index]
+    let line = lineCache.get(equation.root)
+    if (!line || line.id !== id) {
+      line = equationLine(id, equation.root, parsedLines.value[index])
+      lineCache.set(equation.root, line)
+    }
+    return line
+  }),
+)
+let lastEmitted = ''
+watch(
+  lines,
+  (current) => {
+    const key = JSON.stringify(current)
+    if (key === lastEmitted) return
+    lastEmitted = key
+    emit('equations-change', current)
+  },
+  { immediate: true },
+)
 
 const ast = computed(() => parsed.value?.ast ?? null)
 const diagnostics = computed(() => parsed.value?.diagnostics ?? [])
@@ -590,10 +687,11 @@ function toggleCopyMenu(event: Event) {
         <div class="equations-stack" @keydown="handleUnusedKey">
           <div
             v-for="(equation, index) in equations"
-            :key="index"
+            :key="lineIds[index]"
             class="equation-row"
             :class="{ active: index === activeIndex }"
             :data-line="index"
+            :data-line-id="lineIds[index]"
             @focusin="activeIndex = index"
           >
             <div class="equation-label">{{ index + 1 }}</div>
@@ -605,7 +703,7 @@ function toggleCopyMenu(event: Event) {
               :cursor="equation.cursor"
               :anchor="equation.anchor ?? null"
               :active="index === activeIndex"
-              :marks="parsedLines[index]?.diagnostics ?? NO_MARKS"
+              :marks="lineMarks[index]"
               @navigate="handleNavigate(index, $event)"
               @edit="(state, info) => handleEdit(index, state, info)"
             />
@@ -624,6 +722,9 @@ function toggleCopyMenu(event: Event) {
 
         <ul v-if="diagnostics.length" class="diagnostics" data-role="diagnostics">
           <li v-for="(problem, index) in diagnostics" :key="index">{{ problem.message }}</li>
+        </ul>
+        <ul v-if="unitsIssues.length" class="diagnostics units-issues" data-role="units-issues">
+          <li v-for="(issue, index) in unitsIssues" :key="index">{{ issue.message }}</li>
         </ul>
 
         <p class="key-hint">
@@ -645,10 +746,11 @@ function toggleCopyMenu(event: Event) {
           Type letters, numbers and <code>+ − * = ,</code> where the caret is · conditions:
           <code>&lt; &gt; &lt;= &gt;= !=</code>, <code>&amp;</code> (∧), <code>!</code> (¬),
           <code>\or</code> (∨) · <code>/</code> makes a fraction of what's before the caret ·
-          <code>^</code> exponent · <code>( )</code> and <code>| |</code> brackets · letters, digits
-          and <code>_</code> with no operator between them are one name (<code>Vm_init</code>);
-          multiply names with <code>*</code> (<code>a*b</code>) · a name spelling a function
-          (<code>sin</code>, <code>cosh</code>, …) is that function · <code>\</code> commands (<code
+          <code>^</code> exponent · <code>( )</code> and <code>| |</code> brackets ·
+          <code>0.25{mV}</code> a number's units · letters, digits and <code>_</code> with no
+          operator between them are one name (<code>Vm_init</code>); multiply names with
+          <code>*</code> (<code>a*b</code>) · a name spelling a function (<code>sin</code>,
+          <code>cosh</code>, …) is that function · <code>\</code> commands (<code
             >\frac \sqrt \root \abs \dd \cases \sin \pi \e \inf \alpha</code
           >
           …) · <kbd>Backspace</kbd>/<kbd>Delete</kbd> delete · <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo
@@ -870,6 +972,11 @@ function toggleCopyMenu(event: Event) {
   background: #fef3c7;
   color: #92400e;
   font-size: 0.8rem;
+}
+
+.units-issues {
+  background: #ffedd5;
+  color: #9a3412;
 }
 
 .key-hint {

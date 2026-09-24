@@ -48,6 +48,23 @@ a denominator, and a root has a body and, for an nth root, an index.
 A run of digits, with at most one decimal point, is one number: `12`, `3.5`, `.5`.
 Something like `1.2.3` is reported as a malformed number under the equation.
 
+### Units of a number
+
+A number is dimensionless unless you give it units. Type the units name in braces straight
+after the number: `0.25{mV}`, `1e-3{per_s}`. Typing `{` after a number opens the units
+with the caret inside; `}` or Space leaves them. The name is shown upright and grey after
+the number (0.25 mV), and is a units name, not a variable. It must be a valid CellML name:
+letters, digits and underscores, not starting with a digit. Units anywhere but straight
+after a number, or an empty or invalid name, are marked as a problem.
+
+The units go into Content MathML in CellML mode (`<cn cellml:units="mV">0.25</cn>`);
+numbers without units are written `cellml:units="dimensionless"`. Copied as LaTeX they are
+`0.25\,\mathrm{mV}`, which pastes back as units, and pasted plain text such as
+`0.25{mV}` or CellML Text's `0.25 {units: mV}` is read as units too.
+
+Whether the units make sense in the equation is checked outside the editor, if the
+application provides a units checker; problems it finds are underlined in amber.
+
 ### Scientific notation
 
 Type scientific numbers as you would in code: the number, `e` (or `E`), an optional
@@ -386,8 +403,7 @@ With a selection:
   `a+b` in `y=a+b` gives just `a+b`.
 - In **CellML mode** (set by the application using the editor), Content MathML is
   ready for a CellML 2.0 model: it declares the CellML namespace, and every number gets
-  `cellml:units="undefined"` as a placeholder for its units, which you'll need to
-  replace with the real ones.
+  `cellml:units`: the units you gave it (`0.25{mV}`), or `dimensionless`.
 
 ## `\` commands
 

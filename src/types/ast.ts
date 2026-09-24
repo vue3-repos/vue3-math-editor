@@ -27,6 +27,9 @@ export interface NumberNode {
   // exponent, for exporters that keep the notation (Content MathML's
   // e-notation). `value` is the number itself (1e-8).
   scientific?: { mantissa: string; exponent: number }
+  // Its units (a CellML units name), when given: 0.25{mV}. Without, the
+  // number is dimensionless.
+  units?: string
 }
 
 export interface PlaceholderNode {

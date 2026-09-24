@@ -24,6 +24,8 @@ export type BranchName =
   | `value${number}`
   | `cond${number}`
   | 'otherwise'
+  // A number's units.
+  | 'units'
 
 interface AtomBase {
   // Stable identity for rendering (DOM tagging) and hit-testing. Never used
@@ -104,6 +106,14 @@ export interface PiecewiseAtom extends AtomBase {
   otherwise: Row | null
 }
 
+// A number's units, straight after the number: 0.25{mV}. Its row holds the
+// units name, typed character by character, and is drawn upright and grey
+// after the number. A number without one is dimensionless.
+export interface UnitsAtom extends AtomBase {
+  kind: 'units'
+  units: Row
+}
+
 export type StructureAtom =
   | FractionAtom
   | SuperscriptAtom
@@ -111,6 +121,7 @@ export type StructureAtom =
   | GroupAtom
   | DerivativeAtom
   | PiecewiseAtom
+  | UnitsAtom
 
 export type Atom = SymbolAtom | FunctionAtom | StructureAtom
 
@@ -154,6 +165,8 @@ export function childRows(atom: Atom): Array<[BranchName, Row]> {
         ['expr', atom.expr],
         ['variable', atom.variable],
       ]
+    case 'units':
+      return [['units', atom.units]]
     case 'piecewise':
       return [
         ...atom.pieces.flatMap(
@@ -275,6 +288,10 @@ export function group(
 
 export function derivative(expr: Row = [], variable: Row = []): DerivativeAtom {
   return { kind: 'derivative', id: newAtomId(), expr, variable }
+}
+
+export function unitsAtom(units: Row = []): UnitsAtom {
+  return { kind: 'units', id: newAtomId(), units }
 }
 
 export function piecewise(

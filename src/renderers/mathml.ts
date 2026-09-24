@@ -18,21 +18,22 @@ function renderApply(operator: string, children: string[]): string {
 
 export interface ContentMathMLOptions {
   // CellML mode: every number gets a `cellml:units` attribute (CellML 2.0
-  // requires one on each <cn>). The caller declares the `cellml` namespace
-  // on the root <math> element (see editor/exports.ts).
+  // requires one on each <cn>): its own units if it has them (0.25{mV}),
+  // otherwise dimensionless. The caller declares the `cellml` namespace on
+  // the root <math> element (see editor/exports.ts). Outside CellML mode a
+  // number's units are not written.
   cellml?: boolean
 }
 
-// Numbers don't have units yet, so CellML mode writes this placeholder for
-// the user (or libCellML's report) to replace.
-export const CELLML_UNDEFINED_UNITS = 'undefined'
+// The units of a number that wasn't given any.
+export const DEFAULT_NUMBER_UNITS = 'dimensionless'
 
 // A number as <cn>. Scientific notation is kept as MathML's e-notation,
 // <cn type="e-notation">1<sep/>-8</cn>, which CellML also accepts. A plain
 // number that JavaScript would print in exponent form (1e-7, 1e+21) is
 // written the same way, since a type="real" <cn> can't hold an exponent.
 function renderNumber(node: NumberNode, options: ContentMathMLOptions): string {
-  const units = options.cellml ? ` cellml:units="${CELLML_UNDEFINED_UNITS}"` : ''
+  const units = options.cellml ? ` cellml:units="${node.units ?? DEFAULT_NUMBER_UNITS}"` : ''
   const [digits, exponent] = String(node.value).split('e')
   const eNotation = node.scientific
     ? { mantissa: node.scientific.mantissa, exponent: node.scientific.exponent }

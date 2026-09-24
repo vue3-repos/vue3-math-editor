@@ -41,6 +41,7 @@ import {
   setChildRow,
   superscript,
   symbol,
+  unitsAtom,
 } from './layout'
 import { delimiterLatex, functionLatex } from '../registry/nodes'
 
@@ -103,6 +104,8 @@ function isAtom(value: unknown): value is Atom {
       )
     case 'derivative':
       return isRow(value.expr) && isRow(value.variable)
+    case 'units':
+      return isRow(value.units)
     case 'piecewise':
       return (
         Array.isArray(value.pieces) &&
@@ -248,6 +251,12 @@ function atomLatex(atom: Atom, previous: Atom | undefined): string {
     }
     case 'derivative':
       return `\\frac{\\mathrm{d}${rowToLatexSource(atom.expr)}}{\\mathrm{d}${rowToLatexSource(atom.variable)}}`
+    case 'units': {
+      // A thin space and the name upright: 0.25\,\mathrm{mV}, which pastes
+      // back as units.
+      const name = atom.units.map((a) => (a.kind === 'symbol' ? a.value : '')).join('')
+      return `\\,\\mathrm{${name.replace(/_/g, '\\_')}}`
+    }
     case 'piecewise': {
       const lines = atom.pieces.map(
         ({ value, condition }) => `${rowToLatexSource(value)} & ${rowToLatexSource(condition)}`,
@@ -428,6 +437,13 @@ class LatexReader {
 
       switch (token.kind) {
         case 'open':
+          // {mV} (or {units: mV}, as CellML Text writes it) straight after a
+          // number is its units.
+          if (endsWithNumber(atoms)) {
+            this.index-- // back to the "{" for readText
+            atoms.push(unitsFromText(this.readText().replace(/^units:/, '')))
+            break
+          }
           atoms.push(...this.readRow({ close: true }))
           this.next() // "}"
           break
@@ -602,6 +618,19 @@ class LatexReader {
   }
 
   private readCommand(name: string, atoms: Row): void {
+    // 0.25\,\mathrm{mV}: a number's units, as copying writes them.
+    const next = this.peek()
+    if (
+      name === ',' &&
+      endsWithNumber(atoms) &&
+      next?.kind === 'command' &&
+      next.name === 'mathrm'
+    ) {
+      this.next()
+      atoms.push(unitsFromText(this.readText()))
+      return
+    }
+
     if (SPACING.has(name)) return
 
     // \leq, \land, \lnot, … (\not= then reads as ≠, see readChar).
@@ -745,6 +774,17 @@ class LatexReader {
 
     atoms.push(...Array.from(text, (c) => symbol(c))) // \mathit{Vm_init}: typed characters
   }
+}
+
+// Whether the atoms read so far end with a number (not the digits of a name).
+function endsWithNumber(atoms: Row): boolean {
+  const runs = numberRuns(atoms)
+  return runs.length > 0 && runs[runs.length - 1].end === atoms.length
+}
+
+// A units atom holding a name typed as characters.
+function unitsFromText(text: string): Atom {
+  return unitsAtom(Array.from(text.trim(), (c) => symbol(c)))
 }
 
 // Read LaTeX (or plain typed maths) into layout atoms.

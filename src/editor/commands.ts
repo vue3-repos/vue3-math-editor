@@ -35,6 +35,7 @@ import {
   setChildRow,
   superscript,
   symbol,
+  unitsAtom,
 } from './layout'
 import { collapseSelection, selectionOf } from './selection'
 import { GREEK_NAMES, bracketFunctionBefore, functionForSpelling } from './identifiers'
@@ -127,10 +128,11 @@ function ownerOf(state: EditorState, depth = state.cursor.path.length): Owner | 
 
 // Replace a structure atom by the contents of all its rows, in order.
 function unwrap(state: EditorState, owner: Owner, cursorOffset: number): EditorState {
-  // A piecewise's rows don't join up into anything meaningful, so it isn't
+  // A piecewise's rows don't join up into anything meaningful, and a units
+  // name dropped into the row would become a variable, so neither is
   // dissolved: the cursor just steps out, before it (Backspace) or after it
   // (Delete). Removing pieces is done piece by piece.
-  if (owner.atom.kind === 'piecewise') {
+  if (owner.atom.kind === 'piecewise' || owner.atom.kind === 'units') {
     const offset = cursorOffset === 0 ? owner.index : owner.index + 1
     return { root: state.root, cursor: { path: owner.rowPath, offset } }
   }
@@ -534,6 +536,23 @@ export const openParen: Command = (state) => {
   return bracketsRound('(')(state)
 }
 
+// "{" (or \units): a units atom at the cursor, for the number just before
+// it, with the cursor inside to type the units name: 0.25{mV}.
+export const insertUnits: Command = (state) => insertStructure(unitsAtom(), 'units')(state)
+
+// "}": leave the units atom the cursor is in (at any depth). Elsewhere,
+// nothing.
+export const closeUnits: Command = (current) => {
+  const state = current.anchor ? collapseSelection(current, 'end') : current
+  for (let depth = state.cursor.path.length; depth > 0; depth--) {
+    const owner = ownerOf(state, depth)!
+    if (owner.atom.kind === 'units') {
+      return { root: state.root, cursor: { path: owner.rowPath, offset: owner.index + 1 } }
+    }
+  }
+  return current
+}
+
 // \floor, \ceil: ⌊‸⌋ or ⌈‸⌉, or round the selection.
 export const insertFloor: Command = bracketsRound('⌊')
 export const insertCeiling: Command = bracketsRound('⌈')
@@ -782,6 +801,8 @@ export function namedCommand(name: string): Command {
       return insertPiecewise
     case 'otherwise':
       return addOtherwise
+    case 'units':
+      return insertUnits
     case 'floor':
     case 'lfloor':
       return insertFloor

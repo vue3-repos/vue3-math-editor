@@ -41,6 +41,8 @@
 //   a name is still a product: `2Vm` is 2·Vm. A symbol whose value is a whole
 //   word (a Greek letter such as "alpha", inserted by a command) is its own
 //   identifier. Function atoms (from \sin or the toolbar) are functions.
+// - A units atom straight after a number gives that number its units:
+//   `0.25{mV}`. A number without one is dimensionless.
 // - A constant's symbol (\pi, \e, \infty, …; see constants.ts) is a Constant,
 //   not an identifier.
 // - A superscript attaches to the factor before it: `x^2` -> Power(x, 2).
@@ -103,6 +105,9 @@ const OPERATOR_SYMBOLS: Record<string, Operator> = {
   ',': ',',
   ...Object.fromEntries(CONDITION_OPERATORS.map((op) => [op.symbol, op.symbol])),
 }
+
+// A units name: a CellML identifier.
+const UNITS_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
 
 // Loosest first: ∨, then ⊻, then ∧.
 const LOGIC_LEVELS = [
@@ -373,9 +378,7 @@ class Parser {
 
     switch (token.kind) {
       case 'number':
-        return token.scientific
-          ? { type: 'Number', value: token.value, scientific: token.scientific }
-          : { type: 'Number', value: token.value }
+        return this.parseNumber(token)
       case 'identifier':
         return { type: 'Identifier', name: token.name }
       case 'constant':
@@ -387,6 +390,34 @@ class Parser {
       default:
         return placeholder()
     }
+  }
+
+  // A number, with its units if a units atom follows it: 0.25{mV}.
+  private parseNumber(token: Token & { kind: 'number' }): AstNode {
+    const node: NumberNode = { type: 'Number', value: token.value }
+    if (token.scientific) node.scientific = token.scientific
+
+    if (this.peekStructure('units')) {
+      const units = this.unitsName(this.next() as Token & { kind: 'structure' })
+      if (units) node.units = units
+    }
+
+    return node
+  }
+
+  // The name in a units atom, or null (with a diagnostic) if it isn't a valid
+  // CellML identifier.
+  private unitsName(token: Token & { kind: 'structure' }): string | null {
+    const atom = token.atom as StructureAtom & { kind: 'units' }
+    const text = atom.units.map((a) => (a.kind === 'symbol' ? a.value : '?')).join('')
+
+    if (UNITS_NAME.test(text)) return text
+
+    this.diagnostics.push({
+      message: text ? `"${text}" isn't a units name` : 'Missing units name',
+      atomIds: token.atomIds,
+    })
+    return null
   }
 
   // name(args), name^n(args) or name x.
@@ -474,6 +505,10 @@ class Parser {
       case 'superscript':
         // Unreachable: superscripts never start a primary (see startsPrimary).
         return { type: 'Power', base: placeholder(), exponent: this.child(atom.sup) }
+      case 'units':
+        // Unreachable: units are read with their number (parseNumber) or
+        // skipped as misplaced (skipInvalid).
+        return placeholder()
     }
   }
 
@@ -513,18 +548,28 @@ class Parser {
       case 'function':
         return true
       case 'structure':
-        return token.atom.kind !== 'superscript'
+        return token.atom.kind !== 'superscript' && token.atom.kind !== 'units'
       default:
         return false
     }
   }
 
   // Skip glyphs that can never start or join an expression (an unknown
-  // symbol, a comma outside a function's brackets), so one stray glyph
-  // doesn't hide the rest of the row.
+  // symbol, a comma outside a function's brackets, units not straight after
+  // a number), so one stray glyph doesn't hide the rest of the row.
   private skipInvalid(): void {
-    while (this.peek()?.kind === 'unknown' || this.peekOperator(',')) {
-      this.reportUnexpected(this.next()!)
+    for (;;) {
+      if (this.peek()?.kind === 'unknown' || this.peekOperator(',')) {
+        this.reportUnexpected(this.next()!)
+      } else if (this.peekStructure('units')) {
+        const token = this.next()!
+        this.diagnostics.push({
+          message: 'Units belong straight after a number',
+          atomIds: token.atomIds,
+        })
+      } else {
+        return
+      }
     }
   }
 

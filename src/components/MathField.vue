@@ -11,8 +11,9 @@
 // and Backspace/Delete/Tab/Enter when they have nothing to do here (e.g.
 // Backspace in an empty equation, Enter outside a piecewise).
 //
-// Marks underline atoms with a problem (a parser diagnostic, or later a
-// units issue) and show the message when the pointer is over them.
+// Marks underline atoms with a problem (red for a parser diagnostic, amber
+// for a units issue) and show the message when the pointer is over them;
+// hint marks (a variable's units) show only on hover.
 //
 // Copy, cut and paste use the browser's clipboard events (so the system
 // shortcuts and menus work): copying writes the selection as the editor's own
@@ -40,6 +41,7 @@ import { type Cursor, type PickOffset, cursorAtEnd, cursorAtStart } from '../edi
 import { type EditInfo, OTHER_EDIT } from '../editor/history'
 import { commandForKey, typedText } from '../editor/keymap'
 import { type Row, getRow } from '../editor/layout'
+import { type Mark, type MarkKind, isProblem, markKind } from '../editor/marks'
 import { isExponentSignPosition } from '../editor/numbers'
 import {
   collapseSelection,
@@ -59,12 +61,9 @@ export interface NavigationState {
   anchor: Cursor | null
 }
 
-// A problem to underline. A ParseDiagnostic is a Mark.
-export interface Mark {
-  message: string
-  // Consecutive atoms of one row.
-  atomIds: readonly string[]
-}
+// What to underline or explain on hover (editor/marks.ts). A ParseDiagnostic
+// is a Mark.
+export type { Mark, MarkKind } from '../editor/marks'
 
 const props = withDefaults(
   defineProps<{
@@ -88,7 +87,7 @@ const focused = ref(false)
 const caretStyle = ref<Record<string, string> | null>(null)
 const caretInPlaceholder = ref(false)
 const selectionStyle = ref<Record<string, string> | null>(null)
-const markBoxes = ref<Array<{ box: SelectionBox; message: string }>>([])
+const markBoxes = ref<Array<{ box: SelectionBox; message: string; kind: MarkKind }>>([])
 // The mark under the pointer, positioned in client coordinates (the tooltip
 // is position: fixed so the field's horizontal scrolling doesn't clip it).
 const hoveredMark = ref<{ message: string; left: number; top: number } | null>(null)
@@ -144,7 +143,7 @@ function updateOverlays() {
   markBoxes.value = container
     ? props.marks.flatMap((mark) => {
         const box = atomsBox(container, mark.atomIds, 1)
-        return box ? [{ box, message: mark.message }] : []
+        return box ? [{ box, message: mark.message, kind: markKind(mark) }] : []
       })
     : []
   hoveredMark.value = null
@@ -170,10 +169,12 @@ function handleHover(event: MouseEvent) {
   const base = container.getBoundingClientRect()
   const x = event.clientX - base.left + container.scrollLeft
   const y = event.clientY - base.top + container.scrollTop
-  const hit = markBoxes.value.find(
+  const under = markBoxes.value.filter(
     ({ box }) =>
       x >= box.left && x <= box.left + box.width && y >= box.top && y <= box.top + box.height + 4,
   )
+  // A problem's message rather than a hint, where both apply.
+  const hit = under.find((mark) => mark.kind !== 'hint') ?? under[0]
 
   hoveredMark.value = hit
     ? {
@@ -415,7 +416,7 @@ defineExpose({ focus: () => surfaceEl.value?.focus() })
     tabindex="0"
     role="textbox"
     aria-label="Equation"
-    :aria-invalid="marks.length > 0 || undefined"
+    :aria-invalid="marks.some(isProblem) || undefined"
     @keydown="handleKeydown"
     @mousedown="handleMousedown"
     @mousemove="handleHover"
@@ -424,13 +425,16 @@ defineExpose({ focus: () => surfaceEl.value?.focus() })
     @blur="focused = false"
   >
     <div v-if="showSelection" class="selection" :style="selectionStyle!"></div>
-    <div
-      v-for="(mark, index) in markBoxes"
-      :key="index"
-      class="mark"
-      data-role="mark"
-      :style="markStyle(mark.box)"
-    ></div>
+    <template v-for="(mark, index) in markBoxes" :key="index">
+      <div
+        v-if="mark.kind !== 'hint'"
+        class="mark"
+        :class="`mark-${mark.kind}`"
+        data-role="mark"
+        :data-kind="mark.kind"
+        :style="markStyle(mark.box)"
+      ></div>
+    </template>
     <div v-if="showCaret" :key="caretKey" class="caret" :style="caretStyle!"></div>
     <div class="math-content" v-html="html"></div>
     <div
@@ -492,17 +496,31 @@ defineExpose({ focus: () => surfaceEl.value?.focus() })
     rgba(220, 38, 38, 0.08);
 }
 
+/* A units problem: amber. */
+.mark-units {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='3'%3E%3Cpath d='M0 2.5 L1.5 0.5 L3 2.5 L4.5 0.5 L6 2.5' fill='none' stroke='%23d97706' stroke-width='1'/%3E%3C/svg%3E")
+      repeat-x left bottom / 6px 3px,
+    rgba(217, 119, 6, 0.1);
+}
+
+/* A number's units: upright and grey after it. */
+.math-field :deep(.me-units) {
+  color: #64748b;
+}
+
 .mark-tip {
   position: fixed;
   z-index: 10;
-  max-width: 20rem;
+  width: max-content;
+  max-width: 24rem;
   padding: 0.25rem 0.5rem;
   border-radius: 0.35rem;
   background: #1e293b;
   color: #f8fafc;
   font-size: 0.75rem;
   line-height: 1.3;
-  white-space: nowrap;
+  white-space: normal;
   pointer-events: none;
 }
 
