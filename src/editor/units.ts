@@ -38,6 +38,8 @@ export interface UnitsIssue {
   variables?: readonly string[]
   // Numbers to underline, by value.
   numbers?: readonly number[]
+  // Numbers to underline, by the units they were given (0.25{mV}).
+  units?: readonly string[]
 }
 
 // A variable's units, by name, for hover hints.
@@ -110,10 +112,12 @@ function childNodes(node: AstNode): AstNode[] {
 }
 
 // Underlines for the issues on one line: every occurrence of each variable
-// and number an issue names.
+// and number an issue names (numbers by value or by their units).
 export function unitsIssueMarks(root: Row, issues: readonly UnitsIssue[]): Mark[] {
   const marks: Mark[] = []
-  const numbers = issues.some((issue) => issue.numbers?.length) ? numberOccurrences(root) : []
+  const numbers = issues.some((issue) => issue.numbers?.length || issue.units?.length)
+    ? numberOccurrences(root)
+    : []
 
   for (const issue of issues) {
     for (const name of issue.variables ?? []) {
@@ -121,10 +125,12 @@ export function unitsIssueMarks(root: Row, issues: readonly UnitsIssue[]): Mark[
         marks.push({ message: issue.message, atomIds, kind: 'units' })
       }
     }
-    for (const value of issue.numbers ?? []) {
-      for (const number of numbers.filter((n) => n.value === value)) {
-        marks.push({ message: issue.message, atomIds: number.atomIds, kind: 'units' })
-      }
+    const underlined = numbers.filter(
+      (n) =>
+        issue.numbers?.includes(n.value) || (n.units !== null && issue.units?.includes(n.units)),
+    )
+    for (const number of underlined) {
+      marks.push({ message: issue.message, atomIds: number.atomIds, kind: 'units' })
     }
   }
 

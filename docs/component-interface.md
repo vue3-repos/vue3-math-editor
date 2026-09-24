@@ -53,6 +53,7 @@ interface UnitsIssue {
   message: string               // shown on hover and in the list
   variables?: readonly string[] // underline every occurrence of these names in the line
   numbers?: readonly number[]   // underline these numbers (matched by value)
+  units?: readonly string[]     // underline the numbers given these units (0.25{mV})
 }
 ```
 
@@ -77,5 +78,86 @@ A checker's job:
 2. On `equations-change`, check each `complete` line's MathML against them.
 3. Pass the problems back as `issues`, and the variables' units as `variableUnits`.
 
-libCellML's analyser does step 2 (see *Units checking* in [the design](design.md)). With a
-checker in place the editor behaves as before; without one, it is a plain equation editor.
+`src/units/` is such a checker, using libCellML. It is optional and separate from the
+editor: nothing in it imports libcellml.js, which the host provides.
+
+### With the vue3-libcellml.js plugin
+
+```ts
+// main.ts
+import libcellmlPlugin from 'vue3-libcellml.js'
+app.use(libcellmlPlugin)
+```
+
+```vue
+<script setup lang="ts">
+import { ref } from 'vue'
+import EquationWorkbench from './components/EquationWorkbench.vue'
+import type { EquationLine, VariableUnits } from './editor/units'
+import type { UnitsSource } from './units/library'
+import { useUnitsChecker } from './units/useUnitsChecker'
+
+const lines = ref<EquationLine[]>([])
+const sources = ref<UnitsSource[]>([]) // { name, text } of each CellML units file
+const variableUnits = ref<VariableUnits>({})
+
+const { issues, problems, missing, unitsNames, available, ready } = useUnitsChecker({
+  lines,
+  sources,
+  variableUnits,
+})
+</script>
+
+<template>
+  <EquationWorkbench
+    cellml
+    :issues="issues"
+    :variable-units="variableUnits"
+    @equations-change="lines = $event"
+  />
+</template>
+```
+
+`useUnitsChecker` injects `$libcellml` from the plugin. Without the plugin, `available`
+is false and `issues` stays empty; nothing else changes. With it, checking starts once
+libcellml.js has loaded (`ready`), and runs again 300 ms (`delay`) after the lines or
+the variables' units change, or at once when the units files change (replace the
+`sources` array to reload them). A line's result is cached by its MathML and its
+variables' units, so only edited lines are analysed again.
+
+| Returned | Meaning |
+|---|---|
+| `issues` | For the workbench's `issues` prop |
+| `problems` | `{ source, message }[]`: problems reading the units files (unreadable, a name defined twice differently, units made from undefined units, imports) |
+| `missing` | Variables used in the equations that have no units yet |
+| `unitsNames` | Every units name the equations can use: built in, then the files' |
+| `available`, `ready` | libcellml.js is provided; it has loaded |
+| `check()` | Check now rather than after the delay |
+
+To pass libcellml.js in directly instead of injecting it, give the loaded module as the
+`libcellml` option.
+
+### Without Vue
+
+```ts
+import { UnitsLibrary } from './units/library'
+import { UnitsChecker } from './units/check'
+
+const library = UnitsLibrary.load(libcellml, sources)
+const checker = new UnitsChecker(libcellml, library)
+const issues = checker.check(lines, variableUnits)
+// When done with them: checker.dispose(); library.dispose()
+```
+
+The issues the checker reports:
+
+| Problem | Message (example) | Underlined |
+|---|---|---|
+| A variable without units | `x has no units` | the variable |
+| An undefined units name | `No units called furlong are defined` | variables and numbers using it |
+| Units that don't match | `Units don't match in t+2.0: t is in second, 2.0 is in dimensionless` | the variables at fault, or the numbers where there are none |
+| An argument that must be dimensionless | `t in exp(t) must be dimensionless, but is in second` | the variable |
+
+Units that differ only in scale (`mV` and `volt`) don't match. Lines that aren't
+`complete` aren't checked. See *Units checking* in [the design](design.md) for how it
+works.

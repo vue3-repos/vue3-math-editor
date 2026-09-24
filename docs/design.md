@@ -67,6 +67,11 @@ else drives where an edit lands.
 | `renderers/mathjson.ts`, `renderers/mathml.ts` | `AstNode` → MathJSON, Content MathML |
 | `components/MathField.vue` | One editable equation: rendering, overlays, keyboard, mouse, clipboard events |
 | `components/EquationWorkbench.vue` | Lines, undo history, `\` command mode, toolbar, output panels |
+| `units/libcellml.ts` | The parts of libcellml.js the checker uses, typed structurally; releasing its objects |
+| `units/library.ts` | The units library: the user's CellML units files, keeping only their `<units>` |
+| `units/check.ts` | Checking a line's units with libCellML: prechecks, the check model, the analyser |
+| `units/messages.ts` | Reading libCellML's units messages: operands, variables, numbers |
+| `units/useUnitsChecker.ts` | The Vue composable: libcellml.js from the vue3-libcellml.js plugin, if there |
 
 ## Parsing
 
@@ -448,25 +453,56 @@ described for users of the component in [Component interface](component-interfac
   to the line's parse marks and lists the active line's issues under the equations.
 - **Hints in.** The `variableUnits` prop (name → units) gives hover hints for variables,
   and with it numbers show their own units (or dimensionless) on hover.
+- Issues can also name numbers by the units they were given (`units`), so a number with
+  an undefined units name is underlined along with its units.
 - Names are already valid CellML identifiers: `[A-Za-z][A-Za-z0-9_]*`, and Greek letters
   export by name (`<ci>alpha</ci>`).
 
-**The checker (next)** is a separate, optional module using libCellML (libcellml.js),
-which the host provides through the vue3-libcellml.js plugin (`inject('$libcellml')`); if
-it isn't installed, there is no units checking and nothing else changes. Plan:
+**The checker (done)** is `src/units/`, separate from the editor and optional. Nothing in
+it imports libcellml.js: the host loads it (the vue3-libcellml.js plugin provides it as
+`$libcellml`) and the checker is handed the loaded module, typed structurally
+(`units/libcellml.ts`). Without the plugin, `useUnitsChecker` reports `available: false`
+and no issues, and the editor is unchanged. libcellml.js is only a devDependency, for
+the tests.
 
-- A units library: load the user's CellML units files and keep only their `<units>`.
-  New units go out as a separate units-only CellML file, emitted to the host rather than
-  written into a source file.
-- A check model per edit: one component per complete line (so libCellML's message names the
-  line), a variable per name used with its units, and the line's MathML.
-- Analyse, keep the units issues, and map them to `UnitsIssue`s.
+- **The units library** (`UnitsLibrary.load(lc, files)`) reads each CellML file with the
+  non-strict parser, so CellML 1.0 and 1.1 files are read too, and keeps only its
+  `<units>`. Built-in names win over redefinitions; the first definition of a name wins,
+  with a problem reported if a later file defines it differently (compared with
+  `Units.equivalent`, which includes the scale); imported units are skipped; units made
+  from undefined units are reported. Loading never changes the files: **units the user
+  defines go into a units-only CellML file of their own**, handed to the host, never
+  written back into a source file (no side effects).
+- **Prechecks.** Before libCellML sees a line, every variable must have units (else "x
+  has no units") and every units name, the variables' and the numbers', must be known
+  (else "No units called … are defined", underlining the variables and numbers using it).
+  Either would stop the analyser, which only runs on a valid model.
+- **A check model per line**, so one bad line doesn't stop the others: a component named
+  `equation` with a variable per name the line uses (with its units) and the line's
+  MathML, plus only the library units those need (`requiredBy`, following units made
+  from other units). `linkUnits()` is essential: units are set by name, and unlinked
+  library units are taken as undefined and silently skipped.
+- **Analyse** and keep the issues with reference rule 112. Other analyser issues are about
+  the model (unknown variables, uninitialised states, "not an equality"), which a single
+  equation always has. Validator errors after the prechecks would mean the check model
+  is wrong, so they are passed on rather than hidden.
+- **Messages** (`units/messages.ts`) are read for the operands at fault and their units,
+  and reworded without the check model's names: "Units don't match in t+2.0: t is in
+  second, 2.0 is in dimensionless", "t in exp(t) must be dimensionless, but is in
+  second". The variables underlined are those in the operands (derivatives are written
+  `dx/dt`); an operand with no variables underlines its numbers.
+- **Caching.** A line's result depends only on its MathML and its variables' units, which
+  is the cache key; a new library means a new checker and an empty cache. The line id
+  isn't in the check model, so a line keeps its cached result when lines above it move.
+- **libcellml.js objects** wrap C++ memory that JavaScript doesn't collect; every one the
+  checker creates is released (`Handles`). 3,000 checks leave the WebAssembly memory
+  unchanged.
 
 Findings from trying libcellml.js 0.7.1 on the editor's output:
 
 - The analyser's units check works on it, including piecewise, scientific numbers and
   constants. Units problems are warnings with reference rule 112 (`ANALYSER_UNITS`), for
-  example: `The units in 't+2.0' in equation 'x = t+2.0' in component 'line_1' are not
+  example: `The units in 't+2.0' in equation 'x = t+2.0' in component 'equation' are not
   equivalent. 't' is in 'second' while '2.0' is 'dimensionless'.` Other analyser issues
   (unknown variable types, uninitialised states) are about the model, not the equation,
   and are ignored.
@@ -477,11 +513,20 @@ Findings from trying libcellml.js 0.7.1 on the editor's output:
   hence numbers defaulting to dimensionless.
 - Loading takes about 75 ms and analysis about 20–30 ms per equation, so checking only the
   edited line, after a pause, is enough. The WebAssembly is about 2.3 MB (640 KB gzipped).
+- Units that differ only in scale (`mV` and `volt`) are reported, as they should be.
+- A piecewise whose pieces disagree is reported against the whole piecewise, with both
+  sides in the same units (`'y' is in 'second' while '(t < 1.0)?t:0.0' is in 'second'`);
+  the checker rewords it as "The parts of … have different units". With the default
+  otherwise value, 0.0, which is dimensionless, any piecewise with units has this
+  problem until the otherwise value is given units.
+- A line that is only a comparison (`x < y`) isn't an equation, so libCellML checks none
+  of its units.
 
 ## Open questions
 
-- **Where new units go.** Units the user defines while writing equations: into a
-  separate units-only CellML file (the current plan), or back into a source units file.
+- **The otherwise default.** A new piecewise's otherwise value, 0.0, is dimensionless, so
+  in a units-checked equation it is a units problem until it is given units. It could
+  take the units of the first piece's value instead, when that is a number with units.
 - **Subscripts in names.** The underscore is shown literally while the convention for
   formatting variable names (subscripts, and superscripts within them) is undecided.
 - **Boolean-valued equations.** Because `=` is a comparison, `b = x < 1` is a chained
