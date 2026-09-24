@@ -25,6 +25,12 @@ Nothing here needs libCellML.
 | `issues` | `UnitsIssue[]` | `[]` | Units problems to show. Each is underlined in amber on its line and listed under the equations when that line is active; the message shows on hover. |
 | `variableUnits` | `Record<string, string>` | none | Each variable's units by name, shown on hover ("Vm: millivolt"). When given, numbers also show their units on hover ("0.25: dimensionless"). |
 
+### Slot
+
+`below-editor` is shown under the equation editor, in the same column: the place for a
+units panel (see below). Keys typed in it are left alone by the workbench, so `\` and
+Ctrl+Z work there as in any input.
+
 ### Event
 
 `equations-change` is emitted with every line whenever the content of any line changes
@@ -101,10 +107,12 @@ const lines = ref<EquationLine[]>([])
 const sources = ref<UnitsSource[]>([]) // { name, text } of each CellML units file
 const variableUnits = ref<VariableUnits>({})
 
-const { issues, problems, missing, unitsNames, available, ready } = useUnitsChecker({
+const { issues, problems, missing, unitsNames, status } = useUnitsChecker({
   lines,
   sources,
   variableUnits,
+  // Optional: only report once the user has given some units.
+  enabled: () => sources.value.length > 0 || Object.keys(variableUnits.value).length > 0,
 })
 </script>
 
@@ -131,11 +139,53 @@ variables' units, so only edited lines are analysed again.
 | `problems` | `{ source, message }[]`: problems reading the units files (unreadable, a name defined twice differently, units made from undefined units, imports) |
 | `missing` | Variables used in the equations that have no units yet |
 | `unitsNames` | Every units name the equations can use: built in, then the files' |
+| `files` | Each units file as read: its name and the units kept from it |
+| `status` | `'unavailable'` (no libcellml.js), `'loading'` or `'ready'` |
 | `available`, `ready` | libcellml.js is provided; it has loaded |
+| `checking` | Ready and `enabled`: issues are being reported |
 | `check()` | Check now rather than after the delay |
 
 To pass libcellml.js in directly instead of injecting it, give the loaded module as the
 `libcellml` option.
+
+`enabled` (default: always) lets an application hold off until units are in use. Without
+it, a user who writes equations without units sees every variable reported as having
+none; the demo checks once a units file is loaded or any variable has units.
+
+### The units panel
+
+`UnitsPanel` (`src/units/UnitsPanel.vue`) is a ready-made panel for all this, meant for
+the workbench's `below-editor` slot. It shows the checker's status, loads units files
+(any CellML file; only its units are kept), lists each file's units and problems, and
+lists the variables the equations use, with an input for each one's units (suggesting
+the known units names, and marking missing and unknown units). It takes the checker's
+results as props and hands edits back through `v-model`; like the rest of `src/units/`,
+it never imports libcellml.js, and without it still lets the user give units, which the
+workbench then shows on hover.
+
+```vue
+<EquationWorkbench :issues="issues" :variable-units="variableUnits" @equations-change="lines = $event">
+  <template #below-editor>
+    <UnitsPanel
+      v-model:sources="sources"
+      v-model:variable-units="variableUnits"
+      :lines="lines"
+      :status="status"
+      :checking="checking"
+      :files="files"
+      :problems="problems"
+      :units-names="unitsNames"
+      :issues="issues"
+    >
+      <!-- optional: more buttons beside "Load units files" -->
+      <template #actions>…</template>
+    </UnitsPanel>
+  </template>
+</EquationWorkbench>
+```
+
+A units input's value is taken when it changes (Enter, or leaving the input), so a
+half-typed name isn't checked.
 
 ### Without Vue
 
@@ -155,9 +205,11 @@ The issues the checker reports:
 |---|---|---|
 | A variable without units | `x has no units` | the variable |
 | An undefined units name | `No units called furlong are defined` | variables and numbers using it |
-| Units that don't match | `Units don't match in t+2.0: t is in second, 2.0 is in dimensionless` | the variables at fault, or the numbers where there are none |
+| Units that don't match | `Units don't match in t+2.0: t is in second, 2.0 is dimensionless` | the variables at fault, or the numbers where there are none |
 | An argument that must be dimensionless | `t in exp(t) must be dimensionless, but is in second` | the variable |
 
-Units that differ only in scale (`mV` and `volt`) don't match. Lines that aren't
+Variables without units are reported first, then undefined units names; a line with
+either isn't analysed further. Units that differ only in scale (`mV` and `volt`) don't
+match. Lines that aren't
 `complete` aren't checked. See *Units checking* in [the design](design.md) for how it
 works.

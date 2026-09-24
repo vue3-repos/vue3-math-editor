@@ -45,7 +45,8 @@
     "vite-plugin-vue-devtools": "^8.1.2",
     "vitest": "^5.0.0",
     "vue-eslint-parser": "^10.4.1",
-    "vue-tsc": "^3.1.1"
+    "vue-tsc": "^3.1.1",
+    "vue3-libcellml.js": "^0.7.1"
   },
   "engines": {
     "node": "^22.18.0 || >=24.12.0"

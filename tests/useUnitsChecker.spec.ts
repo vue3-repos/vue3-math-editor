@@ -111,6 +111,23 @@ describe('useUnitsChecker', () => {
     checker.stop()
   })
 
+  it('reports nothing until enabled', async () => {
+    const enabled = ref(false)
+    const checker = setup({ lines: [line('x=t')], sources, variableUnits: {}, enabled }, lc)
+    await settled()
+    expect(checker.checking.value).toBe(false)
+    expect(checker.issues.value).toEqual([])
+
+    enabled.value = true
+    await settled()
+    expect(checker.checking.value).toBe(true)
+    expect(checker.issues.value.map((issue) => issue.message)).toEqual([
+      'x has no units',
+      't has no units',
+    ])
+    checker.stop()
+  })
+
   it('reports problems with the units files', async () => {
     const broken = ref([{ name: 'broken.cellml', text: unitsFile({ rate: [['per_hour']] }) }])
     const checker = setup({ lines: [], sources: broken, variableUnits: {} }, lc)

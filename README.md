@@ -10,6 +10,14 @@ See [docs/](docs/README.md):
 - [Writing equations](docs/writing-equations.md): how to use the editor, and how input is
   interpreted.
 - [Equation editor design](docs/design.md): how it works inside.
+- [Component interface](docs/component-interface.md): using the editor in an application,
+  and checking units with libCellML.
+
+The demo (`npm run dev`) checks units with libCellML through the
+[vue3-libcellml.js](https://github.com/hsorby/vue3-libcellml.js) plugin: load a CellML
+units file (or press Example), give the variables units, and problems are underlined as
+you type. Open it with `?nolibcellml` to run it without the plugin, and `?cellml` for
+CellML-mode MathML.
 
 ## Recommended IDE Setup
 

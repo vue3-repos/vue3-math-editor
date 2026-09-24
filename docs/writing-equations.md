@@ -63,7 +63,8 @@ numbers without units are written `cellml:units="dimensionless"`. Copied as LaTe
 `0.25{mV}` or CellML Text's `0.25 {units: mV}` is read as units too.
 
 Whether the units make sense in the equation is checked outside the editor, if the
-application provides a units checker; problems it finds are underlined in amber.
+application provides a units checker; problems it finds are underlined in amber. See
+*Checking units* below.
 
 ### Scientific notation
 
@@ -351,6 +352,31 @@ brackets or a malformed number like `1.2.3`, gets a red wavy underline; point at
 see what's wrong. The problems in the equation you're editing are also listed in a
 warning box under it. The marked part is otherwise ignored, and the rest of the
 equation is still understood.
+
+## Checking units
+
+Where the application checks units (the demo does, with libCellML), a Units panel under
+the equations lists every variable your equations use, with a box for its units:
+
+- **Units files.** Built-in units such as `second`, `metre`, `volt` and `dimensionless`
+  are always there. For others, load CellML files with **Load units files**: only their
+  units are used, so any CellML model will do, CellML 1.0 and 1.1 included. Each file is
+  listed with the units it gave, and anything wrong with it (a name defined differently
+  in two files, units made from units that aren't defined).
+- **Variables.** Type or pick each variable's units; press Enter or move on to use them.
+  A variable without units, or with a units name that isn't defined, is marked.
+  Variables you no longer use are kept, greyed, until you remove them.
+- **Problems** are underlined in amber and listed under the equation you're editing, as
+  soon as an equation is complete: units that don't match (`x + t` with x in metres and
+  t in seconds, or mV added to volts: units that differ only in scale don't match
+  either), or a function argument that has to be dimensionless (`exp(t)`). Point at an
+  underline to read the problem.
+- A number is dimensionless unless it has units (`2{second}`); the otherwise 0.0 of a
+  piecewise takes the first case's units, if that is a number with units.
+
+Checking starts once a units file is loaded or a variable has units. In the demo,
+**Example** loads some electrophysiology units (ms, mV, µA/cm², …) and units for
+`dV/dt = -(I_ion - I_stim)/C_m` to try.
 
 ## Moving and editing
 

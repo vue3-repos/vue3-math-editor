@@ -57,9 +57,15 @@ export function describeUnitsMessage(parsed: UnitsMessage): string {
     return `The parts of ${second.text} have different units`
   }
   return second
-    ? `Units don't match in ${parsed.expression}: ${first.text} is in ${first.units}, ${second.text} is in ${second.units}`
+    ? `Units don't match in ${parsed.expression}: ${inUnits(first)}, ${inUnits(second)}`
     : `Units don't match in ${parsed.expression}`
 }
+
+// "t is in second", "2.0 is dimensionless".
+const inUnits = (operand: Operand) =>
+  operand.units === 'dimensionless'
+    ? `${operand.text} is dimensionless`
+    : `${operand.text} is in ${operand.units}`
 
 const NAME = /[A-Za-z_][A-Za-z0-9_]*/g
 const DERIVATIVE = /\bd(?:\^\d+)?([A-Za-z_][A-Za-z0-9_]*)\/d([A-Za-z_][A-Za-z0-9_]*)(?:\^\d+)?/g

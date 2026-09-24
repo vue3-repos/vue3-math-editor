@@ -16,6 +16,11 @@ export default defineConfig({
     }),
     vueDevTools(),
   ],
+  // libcellml.js finds its WebAssembly next to itself (new URL(…,
+  // import.meta.url)), which pre-bundling would break.
+  optimizeDeps: {
+    exclude: ['vue3-libcellml.js', 'libcellml.js'],
+  },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

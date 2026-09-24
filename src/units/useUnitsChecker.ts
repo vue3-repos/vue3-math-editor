@@ -33,6 +33,9 @@ export interface ProvidedLibCellML {
   library: LibCellML | null
 }
 
+// No libcellml.js; libcellml.js loading; checking.
+export type UnitsCheckerStatus = 'unavailable' | 'loading' | 'ready'
+
 export interface UnitsCheckerOptions {
   // The workbench's lines, from its equations-change event.
   lines: MaybeRefOrGetter<readonly EquationLine[]>
@@ -40,6 +43,10 @@ export interface UnitsCheckerOptions {
   sources: MaybeRefOrGetter<readonly UnitsSource[]>
   // Each variable's units, by name.
   variableUnits: MaybeRefOrGetter<VariableUnits>
+  // Whether to check (default: always). An application can wait until the
+  // user has given some units, so that a user who isn't using units doesn't
+  // see every variable reported as having none.
+  enabled?: MaybeRefOrGetter<boolean>
   // How long after the last change to check, in ms.
   delay?: number
   // libcellml.js itself (loaded, or as the plugin provides it), instead of
@@ -53,11 +60,15 @@ export function useUnitsChecker(options: UnitsCheckerOptions) {
       ? options.libcellml
       : inject<LibCellML | ProvidedLibCellML | null>(LIBCELLML_KEY, null)
   const delay = options.delay ?? 300
+  const enabled = computed(() => toValue(options.enabled) ?? true)
 
   const lc = computed(() => loaded(provided))
   // libcellml.js is there (it may still be loading).
   const available = computed(() => provided !== null)
   const ready = computed(() => lc.value !== null)
+  const status = computed<UnitsCheckerStatus>(() =>
+    ready.value ? 'ready' : available.value ? 'loading' : 'unavailable',
+  )
 
   const library = shallowRef<UnitsLibrary | null>(null)
   const issues = shallowRef<UnitsIssue[]>([])
@@ -67,9 +78,10 @@ export function useUnitsChecker(options: UnitsCheckerOptions) {
   const check = () => {
     clearTimeout(timer)
     timer = undefined
-    issues.value = checker
-      ? checker.check(toValue(options.lines), toValue(options.variableUnits))
-      : []
+    issues.value =
+      checker && enabled.value
+        ? checker.check(toValue(options.lines), toValue(options.variableUnits))
+        : []
   }
 
   const close = () => {
@@ -92,6 +104,8 @@ export function useUnitsChecker(options: UnitsCheckerOptions) {
     { immediate: true },
   )
 
+  watch(enabled, () => check())
+
   watch([() => toValue(options.lines), () => toValue(options.variableUnits)], () => {
     clearTimeout(timer)
     timer = setTimeout(check, delay)
@@ -105,7 +119,12 @@ export function useUnitsChecker(options: UnitsCheckerOptions) {
   return {
     available,
     ready,
+    status,
+    // Ready, and enabled: issues are being reported.
+    checking: computed(() => ready.value && enabled.value),
     issues,
+    // The units files as read: each one's name and the units kept from it.
+    files: computed(() => library.value?.sources ?? []),
     // Problems reading the units files.
     problems: computed(() => library.value?.problems ?? []),
     // Every units name the equations can use: built in, then the files'.

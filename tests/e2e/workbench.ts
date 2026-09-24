@@ -21,6 +21,13 @@ export class Workbench {
     await this.page.locator('.math-field').first().waitFor()
     // Glyph metrics change once the KaTeX fonts load.
     await this.page.evaluate(() => document.fonts.ready.then(() => undefined))
+    // libCellML (for units checking) compiles its WebAssembly as the page
+    // starts, which slows everything else down meanwhile; wait for it.
+    await expect(this.page.locator('[data-role="units-panel"]')).not.toHaveAttribute(
+      'data-status',
+      'loading',
+      { timeout: 15_000 },
+    )
   }
 
   line(index = 0): Locator {
@@ -211,12 +218,14 @@ export class Workbench {
 
   async caretBox(line = 0): Promise<Box | null> {
     await this.settle()
-    // Absent in an empty slot (the placeholder is highlighted instead).
-    if ((await this.caret(line).count()) === 0) return null
-    const rect = await this.caret(line).boundingBox()
-    return rect
-      ? { left: rect.x, top: rect.y, right: rect.x + rect.width, bottom: rect.y + rect.height }
-      : null
+    // Absent in an empty slot (the placeholder is highlighted instead). Read
+    // in one step: the caret element is replaced on every move.
+    return this.page.evaluate((index) => {
+      const caret = document.querySelector(`[data-line="${index}"] .math-field .caret`)
+      if (!caret) return null
+      const rect = caret.getBoundingClientRect()
+      return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom }
+    }, line)
   }
 
   // A point a fraction of the way across (fx) and down (fy) a box.

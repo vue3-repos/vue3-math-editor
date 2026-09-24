@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Example units for the demo: electrophysiology in ms, mV and µA/cm².
+     Only the units of a file are used; its components (here one) are ignored. -->
+<model xmlns="http://www.cellml.org/cellml/2.0#" name="example_units">
+  <units name="ms">
+    <unit prefix="milli" units="second"/>
+  </units>
+  <units name="per_ms">
+    <unit units="ms" exponent="-1"/>
+  </units>
+  <units name="mV">
+    <unit prefix="milli" units="volt"/>
+  </units>
+  <units name="per_mV">
+    <unit units="mV" exponent="-1"/>
+  </units>
+  <units name="mV_per_ms">
+    <unit units="mV"/>
+    <unit units="ms" exponent="-1"/>
+  </units>
+  <units name="uA_per_cm2">
+    <unit prefix="micro" units="ampere"/>
+    <unit prefix="centi" units="metre" exponent="-2"/>
+  </units>
+  <units name="uF_per_cm2">
+    <unit prefix="micro" units="farad"/>
+    <unit prefix="centi" units="metre" exponent="-2"/>
+  </units>
+  <units name="mS_per_cm2">
+    <unit prefix="milli" units="siemens"/>
+    <unit prefix="centi" units="metre" exponent="-2"/>
+  </units>
+  <units name="mM">
+    <unit prefix="milli" units="mole"/>
+    <unit units="litre" exponent="-1"/>
+  </units>
+  <component name="ignored">
+    <variable name="V" units="mV" interface="public"/>
+  </component>
+</model>

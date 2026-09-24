@@ -155,7 +155,7 @@ describe('UnitsChecker', () => {
     expect(check('y=t+2', { y: 'second', t: 'second' })).toEqual([
       {
         lineId: 'line-1',
-        message: "Units don't match in t+2.0: t is in second, 2.0 is in dimensionless",
+        message: "Units don't match in t+2.0: t is in second, 2.0 is dimensionless",
         variables: ['t'],
         numbers: [2],
       },
@@ -231,6 +231,13 @@ describe('UnitsChecker', () => {
     const root = type('x=a+2{furlong}').root
     const marks = unitsIssueMarks(root, issues)
     expect(marks.map((m) => m.atomIds.length)).toEqual([1, 2, 1]) // x; 2 and its units; a
+  })
+
+  it('reports missing and undefined units together', () => {
+    expect(check('x=a*b', { x: 'metre', a: 'furlong' }).map((issue) => issue.message)).toEqual([
+      'b has no units',
+      'No units called furlong are defined',
+    ])
   })
 
   it('checks every complete line, each under its own id', () => {

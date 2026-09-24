@@ -72,6 +72,8 @@ else drives where an edit lands.
 | `units/check.ts` | Checking a line's units with libCellML: prechecks, the check model, the analyser |
 | `units/messages.ts` | Reading libCellML's units messages: operands, variables, numbers |
 | `units/useUnitsChecker.ts` | The Vue composable: libcellml.js from the vue3-libcellml.js plugin, if there |
+| `units/UnitsPanel.vue`, `units/panel.ts` | The units panel: units files, each variable's units |
+| `App.vue`, `main.ts`, `demo/` | The demo: workbench, units panel and checker; example units |
 
 ## Parsing
 
@@ -496,7 +498,7 @@ the tests.
   is wrong, so they are passed on rather than hidden.
 - **Messages** (`units/messages.ts`) are read for the operands at fault and their units,
   and reworded without the check model's names: "Units don't match in t+2.0: t is in
-  second, 2.0 is in dimensionless", "t in exp(t) must be dimensionless, but is in
+  second, 2.0 is dimensionless", "t in exp(t) must be dimensionless, but is in
   second". The variables underlined are those in the operands (derivatives are written
   `dx/dt`); an operand with no variables underlines its numbers.
 - **Caching.** A line's result depends only on its MathML and its variables' units, which
@@ -505,6 +507,22 @@ the tests.
 - **libcellml.js objects** wrap C++ memory that JavaScript doesn't collect; every one the
   checker creates is released (`Handles`). 3,000 checks leave the WebAssembly memory
   unchanged.
+
+**The demo (done)** puts it together (`App.vue`). `main.ts` installs vue3-libcellml.js
+with a dynamic import, so with `?nolibcellml` the plugin is never loaded and the page
+runs as an application without it would. The `UnitsPanel` sits in the workbench's
+`below-editor` slot; the workbench's capture-phase key handling (`\` command mode,
+undo) ignores keys from that slot. Checking is `enabled` once a units file is loaded or a
+variable has units; the Example button loads `demo/example-units.cellml` (ms, mV,
+µA/cm², …) and units for `dV/dt = -(I_ion - I_stim)/C_m`. The browser-test hook
+(`window.__workbench.setUnits`) replaces the checker's issues once used. The Vite
+config excludes vue3-libcellml.js and libcellml.js from dependency pre-bundling, which
+would break libcellml.js finding its WebAssembly (`new URL('libcellml.wasm',
+import.meta.url)`); in a build, the WebAssembly and the plugin are separate chunks.
+
+Browser tests wait for libCellML to load before starting (`Workbench.goto`): compiling
+the WebAssembly slows the page meanwhile, which made a caret test flaky; `caretBox` now
+also reads the caret in one step, since the element is replaced on every move.
 
 Findings from trying libcellml.js 0.7.1 on the editor's output:
 

@@ -55,26 +55,25 @@ export class UnitsChecker {
     return issues.map((issue) => ({ lineId: line.id, ...issue }))
   }
 
-  // Problems that stop the line being analysed: variables without units, and
+  // Problems that stop the line being analysed: variables without units, then
   // units names that aren't defined. Null when there are none.
   private prechecked(line: EquationLine, variableUnits: VariableUnits): LineIssue[] | null {
-    const missing = missingUnits(line, variableUnits)
-    if (missing.length) {
-      return missing.map((name) => ({ message: `${name} has no units`, variables: [name] }))
-    }
+    const missing = missingUnits(line, variableUnits).map((name) => ({
+      message: `${name} has no units`,
+      variables: [name],
+    }))
 
     const unknown = [
       ...new Set([...line.variables.map((name) => variableUnits[name]), ...line.units]),
-    ].filter((units) => !this.library.isKnown(units))
-    if (unknown.length) {
-      return unknown.map((units) => ({
+    ]
+      .filter((units) => units && !this.library.isKnown(units))
+      .map((units) => ({
         message: `No units called ${units} are defined`,
         variables: line.variables.filter((name) => variableUnits[name] === units),
         units: line.units.includes(units) ? [units] : [],
       }))
-    }
 
-    return null
+    return missing.length || unknown.length ? [...missing, ...unknown] : null
   }
 
   private analysed(line: EquationLine, variableUnits: VariableUnits): LineIssue[] {

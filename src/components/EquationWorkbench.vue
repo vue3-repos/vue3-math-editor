@@ -243,6 +243,9 @@ function handleCommandModeKey(event: KeyboardEvent) {
 }
 
 function handleCaptureKeydown(event: KeyboardEvent) {
+  // Keys in the host's content under the editor (its own inputs) are its own.
+  if ((event.target as Element | null)?.closest?.('[data-role="below-editor"]')) return
+
   if (commandBuffer.value !== null) {
     handleCommandModeKey(event)
     return
@@ -554,209 +557,219 @@ function toggleCopyMenu(event: Event) {
 
 <template>
   <section class="editor-grid" @keydown.capture="handleCaptureKeydown">
-    <Card class="editor-card">
-      <template #title>
-        <div class="header-row">
-          <span>Equation Builder</span>
-          <Tag severity="info" value="AST First" />
-        </div>
-      </template>
+    <div class="editor-column">
+      <Card class="editor-card">
+        <template #title>
+          <div class="header-row">
+            <span>Equation Builder</span>
+            <Tag severity="info" value="AST First" />
+          </div>
+        </template>
 
-      <template #subtitle>
-        Type as you would write it; the structure is worked out as you go.
-      </template>
+        <template #subtitle>
+          Type as you would write it; the structure is worked out as you go.
+        </template>
 
-      <template #content>
-        <div class="toolbar">
-          <div class="toolbar-group">
-            <button
-              v-for="item in structureButtons"
-              :key="item.title"
-              type="button"
-              class="tool-button"
-              :title="item.title"
-              @mousedown.prevent
-              @click="run(item.command)"
+        <template #content>
+          <div class="toolbar">
+            <div class="toolbar-group">
+              <button
+                v-for="item in structureButtons"
+                :key="item.title"
+                type="button"
+                class="tool-button"
+                :title="item.title"
+                @mousedown.prevent
+                @click="run(item.command)"
+              >
+                <span v-html="buttonHtml(item.latex)"></span>
+              </button>
+            </div>
+
+            <div class="toolbar-group">
+              <button
+                v-for="item in operatorButtons"
+                :key="item.title"
+                type="button"
+                class="tool-button tool-button-op"
+                :title="item.title"
+                @mousedown.prevent
+                @click="run(item.command)"
+              >
+                <span v-html="buttonHtml(item.latex)"></span>
+              </button>
+            </div>
+
+            <div class="toolbar-group" data-role="constant-buttons">
+              <button
+                v-for="item in constantButtons"
+                :key="item.title"
+                type="button"
+                class="tool-button tool-button-op"
+                :title="item.title"
+                @mousedown.prevent
+                @click="run(item.command)"
+              >
+                <span v-html="buttonHtml(item.latex)"></span>
+              </button>
+            </div>
+
+            <div class="toolbar-group" data-role="condition-buttons">
+              <button
+                v-for="item in conditionButtons"
+                :key="item.title"
+                type="button"
+                class="tool-button tool-button-op"
+                :title="item.title"
+                @mousedown.prevent
+                @click="run(item.command)"
+              >
+                <span v-html="buttonHtml(item.latex)"></span>
+              </button>
+            </div>
+
+            <div class="toolbar-group">
+              <Button
+                icon="pi pi-undo"
+                size="small"
+                text
+                title="Undo (Ctrl+Z)"
+                :disabled="!canUndo"
+                @mousedown.prevent
+                @click="undo"
+              />
+              <Button
+                icon="pi pi-refresh"
+                size="small"
+                text
+                title="Redo (Ctrl+Shift+Z)"
+                :disabled="!canRedo"
+                @mousedown.prevent
+                @click="redo"
+              />
+              <Button
+                icon="pi pi-plus"
+                label="Line"
+                size="small"
+                text
+                title="Add equation line (Enter)"
+                @mousedown.prevent
+                @click="addLineAfterActive"
+              />
+              <Button
+                icon="pi pi-trash"
+                size="small"
+                text
+                severity="danger"
+                title="Remove equation line"
+                :disabled="equations.length <= 1"
+                @mousedown.prevent
+                @click="removeActiveLine"
+              />
+            </div>
+
+            <div class="toolbar-group">
+              <Button
+                icon="pi pi-copy"
+                :label="copyAsLabel"
+                size="small"
+                text
+                title="Copy the selection, or the whole equation, as LaTeX, MathJSON or Content MathML"
+                aria-haspopup="true"
+                aria-controls="copy-as-menu"
+                data-role="copy-as"
+                :disabled="!canCopyAs"
+                @mousedown.prevent
+                @click="toggleCopyMenu"
+              />
+              <Menu id="copy-as-menu" ref="copyMenu" :model="copyAsItems" :popup="true" />
+            </div>
+          </div>
+
+          <Divider />
+
+          <div class="equations-stack" @keydown="handleUnusedKey">
+            <div
+              v-for="(equation, index) in equations"
+              :key="lineIds[index]"
+              class="equation-row"
+              :class="{ active: index === activeIndex }"
+              :data-line="index"
+              :data-line-id="lineIds[index]"
+              @focusin="activeIndex = index"
             >
-              <span v-html="buttonHtml(item.latex)"></span>
-            </button>
+              <div class="equation-label">{{ index + 1 }}</div>
+
+              <MathField
+                :ref="(el) => (fieldRefs[index] = el as InstanceType<typeof MathField> | null)"
+                class="equation-field"
+                :model-value="equation.root"
+                :cursor="equation.cursor"
+                :anchor="equation.anchor ?? null"
+                :active="index === activeIndex"
+                :marks="lineMarks[index]"
+                @navigate="handleNavigate(index, $event)"
+                @edit="(state, info) => handleEdit(index, state, info)"
+              />
+            </div>
           </div>
 
-          <div class="toolbar-group">
-            <button
-              v-for="item in operatorButtons"
-              :key="item.title"
-              type="button"
-              class="tool-button tool-button-op"
-              :title="item.title"
-              @mousedown.prevent
-              @click="run(item.command)"
+          <div v-if="commandBuffer !== null" class="command-chip" data-role="command">
+            <span class="command-slash">\</span>{{ commandBuffer
+            }}<span class="command-caret"></span>
+          </div>
+          <p v-else class="focus-meta">
+            Cursor: <span data-role="cursor">{{ cursorLabel }}</span>
+            <template v-if="selectionLabel">
+              · Selection: <span data-role="selection">{{ selectionLabel }}</span>
+            </template>
+          </p>
+
+          <ul v-if="diagnostics.length" class="diagnostics" data-role="diagnostics">
+            <li v-for="(problem, index) in diagnostics" :key="index">{{ problem.message }}</li>
+          </ul>
+          <ul v-if="unitsIssues.length" class="diagnostics units-issues" data-role="units-issues">
+            <li v-for="(issue, index) in unitsIssues" :key="index">{{ issue.message }}</li>
+          </ul>
+
+          <p class="key-hint">
+            <kbd>←</kbd><kbd>→</kbd> move through every position · <kbd>↑</kbd
+            ><kbd>↓</kbd> numerator/denominator, else previous/next line · <kbd>Home</kbd
+            ><kbd>End</kbd> start/end · <kbd>Tab</kbd> next empty slot · <kbd>Space</kbd> step out
+            of a fraction, exponent or bracket · <kbd>Enter</kbd> new line (in a piecewise: new
+            piece; <kbd>Backspace</kbd> in an empty piece removes it; <code>\otherwise</code> adds
+            one)
+          </p>
+          <p class="key-hint">
+            Select with <kbd>Shift</kbd>+<kbd>←</kbd><kbd>→</kbd>, <kbd>Shift</kbd>+<kbd>Home</kbd
+            ><kbd>End</kbd>, <kbd>Ctrl</kbd>+<kbd>A</kbd> or by dragging · <code>/</code>,
+            <code>^</code>, <code>(</code>, <code>|</code>, <code>\sqrt</code>, <code>\sin</code>, …
+            or a toolbar button then wraps the selection · typing replaces it ·
+            <kbd>Esc</kbd> clears it · <kbd>Ctrl</kbd>+<kbd>C</kbd>/<kbd>X</kbd>/<kbd>V</kbd> copy,
+            cut and paste (copies as LaTeX for other apps; pastes LaTeX or plain text such as
+            <code>(x+1)/2</code>)
+          </p>
+          <p class="key-hint">
+            Type letters, numbers and <code>+ − * = ,</code> where the caret is · conditions:
+            <code>&lt; &gt; &lt;= &gt;= !=</code>, <code>&amp;</code> (∧), <code>!</code> (¬),
+            <code>\or</code> (∨) · <code>/</code> makes a fraction of what's before the caret ·
+            <code>^</code> exponent · <code>( )</code> and <code>| |</code> brackets ·
+            <code>0.25{mV}</code> a number's units · letters, digits and <code>_</code> with no
+            operator between them are one name (<code>Vm_init</code>); multiply names with
+            <code>*</code> (<code>a*b</code>) · a name spelling a function (<code>sin</code>,
+            <code>cosh</code>, …) is that function · <code>\</code> commands (<code
+              >\frac \sqrt \root \abs \dd \cases \sin \pi \e \inf \alpha</code
             >
-              <span v-html="buttonHtml(item.latex)"></span>
-            </button>
-          </div>
+            …) · <kbd>Backspace</kbd>/<kbd>Delete</kbd> delete · <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo
+          </p>
+        </template>
+      </Card>
 
-          <div class="toolbar-group" data-role="constant-buttons">
-            <button
-              v-for="item in constantButtons"
-              :key="item.title"
-              type="button"
-              class="tool-button tool-button-op"
-              :title="item.title"
-              @mousedown.prevent
-              @click="run(item.command)"
-            >
-              <span v-html="buttonHtml(item.latex)"></span>
-            </button>
-          </div>
-
-          <div class="toolbar-group" data-role="condition-buttons">
-            <button
-              v-for="item in conditionButtons"
-              :key="item.title"
-              type="button"
-              class="tool-button tool-button-op"
-              :title="item.title"
-              @mousedown.prevent
-              @click="run(item.command)"
-            >
-              <span v-html="buttonHtml(item.latex)"></span>
-            </button>
-          </div>
-
-          <div class="toolbar-group">
-            <Button
-              icon="pi pi-undo"
-              size="small"
-              text
-              title="Undo (Ctrl+Z)"
-              :disabled="!canUndo"
-              @mousedown.prevent
-              @click="undo"
-            />
-            <Button
-              icon="pi pi-refresh"
-              size="small"
-              text
-              title="Redo (Ctrl+Shift+Z)"
-              :disabled="!canRedo"
-              @mousedown.prevent
-              @click="redo"
-            />
-            <Button
-              icon="pi pi-plus"
-              label="Line"
-              size="small"
-              text
-              title="Add equation line (Enter)"
-              @mousedown.prevent
-              @click="addLineAfterActive"
-            />
-            <Button
-              icon="pi pi-trash"
-              size="small"
-              text
-              severity="danger"
-              title="Remove equation line"
-              :disabled="equations.length <= 1"
-              @mousedown.prevent
-              @click="removeActiveLine"
-            />
-          </div>
-
-          <div class="toolbar-group">
-            <Button
-              icon="pi pi-copy"
-              :label="copyAsLabel"
-              size="small"
-              text
-              title="Copy the selection, or the whole equation, as LaTeX, MathJSON or Content MathML"
-              aria-haspopup="true"
-              aria-controls="copy-as-menu"
-              data-role="copy-as"
-              :disabled="!canCopyAs"
-              @mousedown.prevent
-              @click="toggleCopyMenu"
-            />
-            <Menu id="copy-as-menu" ref="copyMenu" :model="copyAsItems" :popup="true" />
-          </div>
-        </div>
-
-        <Divider />
-
-        <div class="equations-stack" @keydown="handleUnusedKey">
-          <div
-            v-for="(equation, index) in equations"
-            :key="lineIds[index]"
-            class="equation-row"
-            :class="{ active: index === activeIndex }"
-            :data-line="index"
-            :data-line-id="lineIds[index]"
-            @focusin="activeIndex = index"
-          >
-            <div class="equation-label">{{ index + 1 }}</div>
-
-            <MathField
-              :ref="(el) => (fieldRefs[index] = el as InstanceType<typeof MathField> | null)"
-              class="equation-field"
-              :model-value="equation.root"
-              :cursor="equation.cursor"
-              :anchor="equation.anchor ?? null"
-              :active="index === activeIndex"
-              :marks="lineMarks[index]"
-              @navigate="handleNavigate(index, $event)"
-              @edit="(state, info) => handleEdit(index, state, info)"
-            />
-          </div>
-        </div>
-
-        <div v-if="commandBuffer !== null" class="command-chip" data-role="command">
-          <span class="command-slash">\</span>{{ commandBuffer }}<span class="command-caret"></span>
-        </div>
-        <p v-else class="focus-meta">
-          Cursor: <span data-role="cursor">{{ cursorLabel }}</span>
-          <template v-if="selectionLabel">
-            · Selection: <span data-role="selection">{{ selectionLabel }}</span>
-          </template>
-        </p>
-
-        <ul v-if="diagnostics.length" class="diagnostics" data-role="diagnostics">
-          <li v-for="(problem, index) in diagnostics" :key="index">{{ problem.message }}</li>
-        </ul>
-        <ul v-if="unitsIssues.length" class="diagnostics units-issues" data-role="units-issues">
-          <li v-for="(issue, index) in unitsIssues" :key="index">{{ issue.message }}</li>
-        </ul>
-
-        <p class="key-hint">
-          <kbd>←</kbd><kbd>→</kbd> move through every position · <kbd>↑</kbd
-          ><kbd>↓</kbd> numerator/denominator, else previous/next line · <kbd>Home</kbd
-          ><kbd>End</kbd> start/end · <kbd>Tab</kbd> next empty slot · <kbd>Space</kbd> step out of
-          a fraction, exponent or bracket · <kbd>Enter</kbd> new line (in a piecewise: new piece;
-          <kbd>Backspace</kbd> in an empty piece removes it; <code>\otherwise</code> adds one)
-        </p>
-        <p class="key-hint">
-          Select with <kbd>Shift</kbd>+<kbd>←</kbd><kbd>→</kbd>, <kbd>Shift</kbd>+<kbd>Home</kbd
-          ><kbd>End</kbd>, <kbd>Ctrl</kbd>+<kbd>A</kbd> or by dragging · <code>/</code>,
-          <code>^</code>, <code>(</code>, <code>|</code>, <code>\sqrt</code>, <code>\sin</code>, …
-          or a toolbar button then wraps the selection · typing replaces it · <kbd>Esc</kbd> clears
-          it · <kbd>Ctrl</kbd>+<kbd>C</kbd>/<kbd>X</kbd>/<kbd>V</kbd> copy, cut and paste (copies as
-          LaTeX for other apps; pastes LaTeX or plain text such as <code>(x+1)/2</code>)
-        </p>
-        <p class="key-hint">
-          Type letters, numbers and <code>+ − * = ,</code> where the caret is · conditions:
-          <code>&lt; &gt; &lt;= &gt;= !=</code>, <code>&amp;</code> (∧), <code>!</code> (¬),
-          <code>\or</code> (∨) · <code>/</code> makes a fraction of what's before the caret ·
-          <code>^</code> exponent · <code>( )</code> and <code>| |</code> brackets ·
-          <code>0.25{mV}</code> a number's units · letters, digits and <code>_</code> with no
-          operator between them are one name (<code>Vm_init</code>); multiply names with
-          <code>*</code> (<code>a*b</code>) · a name spelling a function (<code>sin</code>,
-          <code>cosh</code>, …) is that function · <code>\</code> commands (<code
-            >\frac \sqrt \root \abs \dd \cases \sin \pi \e \inf \alpha</code
-          >
-          …) · <kbd>Backspace</kbd>/<kbd>Delete</kbd> delete · <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo
-        </p>
-      </template>
-    </Card>
+      <!-- Under the editor, for the host: a units panel, for example. -->
+      <div v-if="$slots['below-editor']" class="below-editor" data-role="below-editor">
+        <slot name="below-editor" />
+      </div>
+    </div>
 
     <Card class="output-card" aria-labelledby="ast-preview-title">
       <template #title>
@@ -820,8 +833,11 @@ function toggleCopyMenu(event: Event) {
   outline: none;
 }
 
-.editor-card {
+.editor-column {
   grid-row: span 3;
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
 }
 
 .header-row {
@@ -1020,7 +1036,7 @@ function toggleCopyMenu(event: Event) {
     grid-template-columns: 1fr;
   }
 
-  .editor-card {
+  .editor-column {
     grid-row: auto;
   }
 }
