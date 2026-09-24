@@ -53,7 +53,12 @@
 import type { AstNode, NumberNode } from '../types/ast'
 import { functionForBracket } from '../registry/nodes'
 import { constantForSymbol } from './constants'
-import { continuesName, functionForSpelling, startsName } from './identifiers'
+import {
+  continuesName,
+  functionForSpelling,
+  inheritedOtherwiseUnits,
+  startsName,
+} from './identifiers'
 import { numberAt } from './numbers'
 import { CONDITION_OPERATORS, conditionOperator } from './operators'
 import type { Row, StructureAtom } from './layout'
@@ -493,15 +498,21 @@ class Parser {
           expression: this.child(atom.expr),
           variable: this.child(atom.variable),
         }
-      case 'piecewise':
+      case 'piecewise': {
+        let otherwise = atom.otherwise ? this.child(atom.otherwise) : null
+        // A default 0.0 takes the units of the first piece's number.
+        const inherited = inheritedOtherwiseUnits(atom)
+        if (otherwise?.type === 'Number' && inherited)
+          otherwise = { ...otherwise, units: inherited }
         return {
           type: 'Piecewise',
           pieces: atom.pieces.map(({ value, condition }) => ({
             value: this.child(value),
             condition: this.child(condition),
           })),
-          otherwise: atom.otherwise ? this.child(atom.otherwise) : null,
+          otherwise,
         }
+      }
       case 'superscript':
         // Unreachable: superscripts never start a primary (see startsPrimary).
         return { type: 'Power', base: placeholder(), exponent: this.child(atom.sup) }

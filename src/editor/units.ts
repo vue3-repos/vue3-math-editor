@@ -149,8 +149,9 @@ export function unitsHintMarks(root: Row, variableUnits: VariableUnits): Mark[] 
   }
 
   for (const number of numberOccurrences(root)) {
+    const from = number.inherited ? ', as in the first piece' : ''
     marks.push({
-      message: `${number.value}: ${number.units || DEFAULT_NUMBER_UNITS}`,
+      message: `${number.value}: ${number.units || DEFAULT_NUMBER_UNITS}${from}`,
       atomIds: number.atomIds,
       kind: 'hint',
     })

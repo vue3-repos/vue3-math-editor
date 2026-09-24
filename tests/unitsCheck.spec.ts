@@ -134,6 +134,23 @@ describe('UnitsChecker', () => {
     expect(check('V=2{mV}', { V: 'mV' })).toEqual([])
   })
 
+  it('reports scale differences anywhere in an equation', () => {
+    const units = { V: 'mV', W: 'volt', X: 'mV', t: 'ms' }
+    const messages = (keys: string) => check(keys, units).map((issue) => issue.message)
+    expect(messages('V=W+X')).toEqual(["Units don't match in W+X: W is in volt, X is in mV"])
+    expect(messages('V=X+W+X')).toHaveLength(1)
+    const maximum = lineOf(press(namedCommand('max')(type('V=')), 'W,X'))
+    expect(checker.checkLine(maximum, units).map((issue) => issue.message)).toEqual([
+      "Units don't match in max(W, X): W is in volt, X is in mV",
+    ])
+    // In a piecewise's condition.
+    const started = namedCommand('cases')(type('V='))
+    const condition = lineOf(press(started, 'X', 'ArrowRight', 't<1{second}'))
+    expect(checker.checkLine(condition, units).map((issue) => issue.message)).toEqual([
+      "Units don't match in t < 1.0: t is in ms, 1.0 is in second",
+    ])
+  })
+
   it('reports numbers at fault by value', () => {
     expect(check('y=t+2', { y: 'second', t: 'second' })).toEqual([
       {
@@ -153,12 +170,35 @@ describe('UnitsChecker', () => {
 
   it('reports a piecewise whose pieces disagree', () => {
     const units = { y: 'second', t: 'second' }
-    // The otherwise value is dimensionless unless given units.
     const started = namedCommand('cases')(type('y='))
     expect(checker.checkLine(lineOf(started), units)).toEqual([]) // incomplete: not checked
+    // The default otherwise, 0.0, has no units of its own; with a first piece
+    // that isn't a number with units, it is dimensionless.
     const piecewise = lineOf(press(started, 't', 'ArrowRight', 't<1{second}'))
     expect(piecewise.complete).toBe(true)
     expect(checker.checkLine(piecewise, units)[0].message).toMatch(
+      /^The parts of .* have different units$/,
+    )
+  })
+
+  it('takes the default otherwise value’s units from a first piece that is a number', () => {
+    const started = namedCommand('cases')(type('V='))
+    const piecewise = lineOf(press(started, '5{mV}', 'ArrowRight', 't<1{ms}'))
+    expect(checker.checkLine(piecewise, { V: 'mV', t: 'ms' })).toEqual([])
+    const scaled = lineOf(
+      press(
+        started,
+        '5{mV}',
+        'ArrowRight',
+        't<1{ms}',
+        'ArrowRight',
+        'ArrowRight',
+        'ArrowRight',
+        'ArrowRight',
+        '{volt}',
+      ),
+    )
+    expect(checker.checkLine(scaled, { V: 'mV', t: 'ms' })[0].message).toMatch(
       /^The parts of .* have different units$/,
     )
   })

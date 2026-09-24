@@ -38,7 +38,12 @@ import {
   unitsAtom,
 } from './layout'
 import { collapseSelection, selectionOf } from './selection'
-import { GREEK_NAMES, bracketFunctionBefore, functionForSpelling } from './identifiers'
+import {
+  DEFAULT_OTHERWISE,
+  GREEK_NAMES,
+  bracketFunctionBefore,
+  functionForSpelling,
+} from './identifiers'
 import { constantForCommand } from './constants'
 import { combinedWithEquals, conditionOperatorForCommand } from './operators'
 import { getFunctionDefinition } from '../registry/nodes'
@@ -203,7 +208,7 @@ export const addOtherwise: Command = (state) => {
     return { root: state.root, cursor: { path, offset: owner.atom.otherwise.length } }
   }
 
-  const otherwise = row('0.0')
+  const otherwise = row(DEFAULT_OTHERWISE)
   const next = splice(state, owner.rowPath, owner.index, 1, [{ ...owner.atom, otherwise }], {
     path,
     offset: otherwise.length,
@@ -384,14 +389,14 @@ export const insertPiecewise: Command = (current) => {
   if (selection) {
     const { path, start, end } = selection
     const content = requireRow(current.root, path).slice(start, end)
-    const atom = piecewise([[content, []]], row('0.0'))
+    const atom = piecewise([[content, []]], row(DEFAULT_OTHERWISE))
     return splice(current, path, start, end - start, [atom], {
       path: [...path, { atom: start, branch: 'cond0' }],
       offset: 0,
     })
   }
 
-  return insertStructure(piecewise([[[], []]], row('0.0')), 'value0')(current)
+  return insertStructure(piecewise([[[], []]], row(DEFAULT_OTHERWISE)), 'value0')(current)
 }
 
 // Insert a structure atom at the cursor and move into one of its rows.

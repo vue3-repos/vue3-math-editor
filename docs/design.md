@@ -239,6 +239,14 @@ pastes back.
     an empty piece does the same. The only piece is never removed this way.
   - Backspace or Delete in an empty otherwise removes it; `\otherwise` adds it back as
     `0.0`, selected so that typing replaces it.
+- **Units of the default otherwise:** while the otherwise row is exactly `0.0`
+  (`DEFAULT_OTHERWISE`) with no units, and the first piece's value is a number with units
+  (optionally negated), the 0.0 takes those units (`inheritedOtherwiseUnits`): the parser
+  gives the otherwise `Number` those units, so every export has them, and
+  `numberOccurrences` reports them (the hover hint says "as in the first piece"). Without
+  this, every piecewise with units would have a units problem until its 0.0 was given
+  units. A first value that is an expression (`2*t`) gives nothing: its units are only
+  known to the checker.
   - Backspace/Delete at the edge of a non-empty piecewise step out of it rather than
     dissolving it, since its rows don't join up into anything meaningful. One whose rows
     are all empty goes in one Backspace, like other structures.
@@ -513,20 +521,21 @@ Findings from trying libcellml.js 0.7.1 on the editor's output:
   hence numbers defaulting to dimensionless.
 - Loading takes about 75 ms and analysis about 20–30 ms per equation, so checking only the
   edited line, after a pause, is enough. The WebAssembly is about 2.3 MB (640 KB gzipped).
-- Units that differ only in scale (`mV` and `volt`) are reported, as they should be.
+- Units that differ only in scale (`mV` and `volt`) are reported anywhere in an equation:
+  in a sum, a function's arguments, a condition, or between the pieces of a piecewise.
 - A piecewise whose pieces disagree is reported against the whole piecewise, with both
   sides in the same units (`'y' is in 'second' while '(t < 1.0)?t:0.0' is in 'second'`);
-  the checker rewords it as "The parts of … have different units". With the default
-  otherwise value, 0.0, which is dimensionless, any piecewise with units has this
-  problem until the otherwise value is given units.
+  the checker rewords it as "The parts of … have different units". A default otherwise
+  0.0 takes the first piece's units when that is a number (see *Piecewise*), so this
+  comes up for real disagreements, or a first piece that is an expression.
 - A line that is only a comparison (`x < y`) isn't an equation, so libCellML checks none
   of its units.
 
 ## Open questions
 
-- **The otherwise default.** A new piecewise's otherwise value, 0.0, is dimensionless, so
-  in a units-checked equation it is a units problem until it is given units. It could
-  take the units of the first piece's value instead, when that is a number with units.
+- **The otherwise default with an expression first.** A default 0.0 takes the units of a
+  first piece that is a number with units, but not of one that is an expression, whose
+  units only the checker knows. The checker could say which units it needs.
 - **Subscripts in names.** The underscore is shown literally while the convention for
   formatting variable names (subscripts, and superscripts within them) is undecided.
 - **Boolean-valued equations.** Because `=` is a comparison, `b = x < 1` is a chained

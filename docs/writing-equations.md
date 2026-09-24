@@ -284,6 +284,11 @@ dchi_v/dt ⎨ 0.5 / …        chi_vfloor > 0.5
 - **Otherwise is optional:** delete its contents, then Backspace once more to remove
   it. `\otherwise` puts it back, with `0.0` selected so you can type over it.
 - A piecewise is an expression, so it can go anywhere: `y = 2{…} + 1` is fine.
+- **Units of the otherwise 0.0:** while the otherwise is still `0.0`, it has the units of
+  the first case's value when that is a number with units: in `{5{mV} if t < 1{ms};
+  0.0 otherwise}` the 0.0 is in mV (hover over it to see). Give it units of its own, or
+  change it, and it no longer follows the first case. Otherwise a number without units
+  is dimensionless, as everywhere.
 
 Conditions use the comparison and logical operators described under *Conditions*.
 

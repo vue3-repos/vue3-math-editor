@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
+import { namedCommand } from '../src/editor/commands'
+import { contentMathML } from '../src/editor/exports'
 import { parseRow } from '../src/editor/parse'
 import { equationLine, unitsHintMarks, unitsIssueMarks } from '../src/editor/units'
-import { type } from './editorHelpers'
+import { press, type } from './editorHelpers'
 
 const typed = (keys: string) => type(keys).root
 const line = (keys: string, id = 'line-1') => {
@@ -76,5 +78,44 @@ describe('unitsHintMarks', () => {
       '0.5: mV',
     ])
     expect(marks.every((m) => m.kind === 'hint')).toBe(true)
+  })
+})
+
+describe('a default otherwise value', () => {
+  // y = { value if t < 1 ; otherwise 0.0 }, then `keys` typed in the otherwise.
+  const piecewise = (value: string, ...otherwise: string[]) => {
+    let state = press(namedCommand('cases')(type('y=')), value, 'ArrowRight', 't<1', 'ArrowRight')
+    // Keys typed at the end of the 0.0.
+    if (otherwise.length)
+      state = press(state, 'ArrowRight', 'ArrowRight', 'ArrowRight', ...otherwise)
+    return state.root
+  }
+  const otherwiseMathML = (root: ReturnType<typeof piecewise>) =>
+    /<otherwise>\s*(.*?)\s*<\/otherwise>/s.exec(contentMathML(root, { cellml: true }))?.[1]
+
+  it('is in the first piece’s units while it is still 0.0', () => {
+    expect(otherwiseMathML(piecewise('5{mV}'))).toBe('<cn cellml:units="mV">0</cn>')
+    expect(otherwiseMathML(piecewise('-5{mV}'))).toBe('<cn cellml:units="mV">0</cn>')
+    expect(equationLine('line-1', piecewise('5{mV}'), parseRow(piecewise('5{mV}'))).units).toEqual([
+      'mV',
+    ])
+  })
+
+  it('shows where its units come from on hover', () => {
+    const messages = unitsHintMarks(piecewise('5{mV}'), {}).map((m) => m.message)
+    expect(messages).toEqual(['5: mV', '1: dimensionless', '0: mV, as in the first piece'])
+  })
+
+  it('keeps its own units, or none, once edited', () => {
+    expect(otherwiseMathML(piecewise('5{mV}', '{V}'))).toBe('<cn cellml:units="V">0</cn>')
+    expect(otherwiseMathML(piecewise('5{mV}', 'Backspace', '1'))).toBe(
+      '<cn cellml:units="dimensionless">0.1</cn>', // 0.0 edited to 0.1
+    )
+  })
+
+  it('stays dimensionless when the first piece isn’t just a number with units', () => {
+    expect(otherwiseMathML(piecewise('5'))).toBe('<cn cellml:units="dimensionless">0</cn>')
+    expect(otherwiseMathML(piecewise('2*t'))).toBe('<cn cellml:units="dimensionless">0</cn>')
+    expect(otherwiseMathML(piecewise('5{mV}+t'))).toBe('<cn cellml:units="dimensionless">0</cn>')
   })
 })

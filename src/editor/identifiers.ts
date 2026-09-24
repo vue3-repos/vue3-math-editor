@@ -15,7 +15,14 @@
 // character at a time; the grouping is worked out here, when parsing and
 // rendering.
 
-import { type Atom, type GroupDelimiter, type Row, childRows } from './layout'
+import {
+  type Atom,
+  type GroupDelimiter,
+  type PiecewiseAtom,
+  type Row,
+  type UnitsAtom,
+  childRows,
+} from './layout'
 import { constantForSymbol } from './constants'
 import { type NumberRun, numberAt } from './numbers'
 import { FUNCTION_REGISTRY, bracketsForFunction } from '../registry/nodes'
@@ -111,6 +118,30 @@ export function numberRuns(row: Row): NumberRun[] {
   return runs
 }
 
+// A units atom's name, as typed.
+export const unitsName = (atom: UnitsAtom): string =>
+  atom.units.map((a) => (a.kind === 'symbol' ? a.value : '')).join('')
+
+// The otherwise value a new piecewise starts with.
+export const DEFAULT_OTHERWISE = '0.0'
+
+// The units an otherwise value takes from the first piece: while it is still
+// the default 0.0, with no units of its own, and the first piece's value is a
+// number with units (5{mV}, or -5{mV}), the 0.0 is in those units too, so the
+// pieces agree without the user giving the 0.0 units. Null otherwise.
+export function inheritedOtherwiseUnits(atom: PiecewiseAtom): string | null {
+  const otherwise = atom.otherwise
+  const text = otherwise?.map((a) => (a.kind === 'symbol' ? a.value : '\0')).join('')
+  if (text !== DEFAULT_OTHERWISE) return null
+
+  const value = atom.pieces[0]?.value ?? []
+  const start = value[0]?.kind === 'symbol' && value[0].value === '-' ? 1 : 0
+  const number = numberAt(value, start)
+  const units = value[value.length - 1]
+  if (!number || number.end !== value.length - 1 || units?.kind !== 'units') return null
+  return unitsName(units) || null
+}
+
 // Every place a variable name appears in an equation, at any depth: the atoms
 // of each occurrence. For marking a problem reported by name rather than by
 // position, such as a units mismatch from libCellML.
@@ -152,27 +183,35 @@ export interface NumberOccurrence {
   value: number
   // The number's atoms, and its units atom if it has one.
   atomIds: string[]
-  // The name in its units atom, if it has one.
+  // The name in its units atom, if it has one, or the units a default
+  // otherwise value takes from the first piece.
   units: string | null
+  // The units are the first piece's (see inheritedOtherwiseUnits).
+  inherited?: boolean
 }
 
 // Every number in an equation, at any depth.
 export function numberOccurrences(root: Row): NumberOccurrence[] {
   const found: NumberOccurrence[] = []
 
-  const visit = (row: Row) => {
+  // `inherited`: the units a default otherwise value takes from its piecewise.
+  const visit = (row: Row, inherited: string | null = null) => {
     for (const run of numberRuns(row)) {
       const after = row[run.end]
       const unitsAtom = after?.kind === 'units' ? after : null
       const atoms = row.slice(run.start, run.end + (unitsAtom ? 1 : 0))
-      const units = unitsAtom
-        ? unitsAtom.units.map((a) => (a.kind === 'symbol' ? a.value : '')).join('')
-        : null
-      found.push({ value: Number(run.text), atomIds: atoms.map((a) => a.id), units })
+      const atomIds = atoms.map((a) => a.id)
+      const value = Number(run.text)
+      if (unitsAtom) found.push({ value, atomIds, units: unitsName(unitsAtom) })
+      else if (inherited) found.push({ value, atomIds, units: inherited, inherited: true })
+      else found.push({ value, atomIds, units: null })
     }
     for (const atom of row) {
       if (atom.kind === 'units') continue
-      for (const [, child] of childRows(atom)) visit(child)
+      for (const [branch, child] of childRows(atom)) {
+        const otherwise = atom.kind === 'piecewise' && branch === 'otherwise'
+        visit(child, otherwise ? inheritedOtherwiseUnits(atom) : null)
+      }
     }
   }
 
