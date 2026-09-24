@@ -106,17 +106,20 @@ app.use(libcellmlPlugin)
 import { ref } from 'vue'
 import EquationWorkbench from './components/EquationWorkbench.vue'
 import type { EquationLine, VariableUnits } from './editor/units'
+import type { UnitsDefinition } from './units/definitions'
 import type { UnitsSource } from './units/library'
 import { useUnitsChecker } from './units/useUnitsChecker'
 
 const lines = ref<EquationLine[]>([])
 const sources = ref<UnitsSource[]>([]) // { name, text } of each CellML units file
 const variableUnits = ref<VariableUnits>({})
+const newUnits = ref<UnitsDefinition[]>([]) // units the user defines
 
-const { issues, problems, missing, unitsNames, status } = useUnitsChecker({
+const { issues, problems, missing, unitsNames, status, newUnitsFile } = useUnitsChecker({
   lines,
   sources,
   variableUnits,
+  newUnits,
   // Optional: only report once the user has given some units.
   enabled: () => sources.value.length > 0 || Object.keys(variableUnits.value).length > 0,
 })
@@ -145,7 +148,8 @@ variables' units, so only edited lines are analysed again.
 | `problems` | `{ source, message }[]`: problems reading the units files (unreadable, a name defined twice differently, units made from undefined units, imports) |
 | `missing` | Variables used in the equations that have no units yet |
 | `unitsNames` | Every units name the equations can use: built in, then the files' |
-| `files` | Each units file as read: its name and the units kept from it |
+| `files` | Each units file as read: its name and the units kept from it (the new units last, as `'new units'`) |
+| `newUnitsFile` | The new units as a CellML 2.0 file holding only them (`''` if there are none) |
 | `status` | `'unavailable'` (no libcellml.js), `'loading'` or `'ready'` |
 | `available`, `ready` | libcellml.js is provided; it has loaded |
 | `checking` | Ready and `enabled`: issues are being reported |
@@ -153,6 +157,10 @@ variables' units, so only edited lines are analysed again.
 
 To pass libcellml.js in directly instead of injecting it, give the loaded module as the
 `libcellml` option.
+
+`newUnits` (optional) are units the user has defined, as plain data; the checker reads
+them as one more units file, generated from them (`newUnitsFile` in
+`src/units/definitions.ts`), so equations can use them straight away.
 
 `enabled` (default: always) lets an application hold off until units are in use. Without
 it, a user who writes equations without units sees every variable reported as having
@@ -163,8 +171,9 @@ none; the demo checks once a units file is loaded or any variable has units.
 `UnitsPanel` (`src/units/UnitsPanel.vue`) is a ready-made panel for all this, meant for
 the workbench's `side` slot. It shows the checker's status, loads units files
 (any CellML file; only its units are kept), lists each file's units and problems, and
-lists the variables the equations use, with an input for each one's units (suggesting
-the known units names, and marking missing and unknown units). It takes the checker's
+lets the user define new units, and lists the variables the equations use, with an
+input for each one's units (suggesting the known units names, and marking missing and
+unknown units). It takes the checker's
 results as props and hands edits back through `v-model`; like the rest of `src/units/`,
 it never imports libcellml.js, and without it still lets the user give units, which the
 workbench then shows on hover.
@@ -175,6 +184,7 @@ workbench then shows on hover.
     <UnitsPanel
       v-model:sources="sources"
       v-model:variable-units="variableUnits"
+      v-model:new-units="newUnits"
       :lines="lines"
       :status="status"
       :checking="checking"
@@ -185,6 +195,8 @@ workbench then shows on hover.
     >
       <!-- optional: more buttons beside "Load units files" -->
       <template #actions>…</template>
+      <!-- optional: beside "Define units", e.g. to save the new units file -->
+      <template #new-units-actions="{ definitions }">…</template>
     </UnitsPanel>
   </template>
 </EquationWorkbench>
@@ -192,6 +204,40 @@ workbench then shows on hover.
 
 A units input's value is taken when it changes (Enter, or leaving the input), so a
 half-typed name isn't checked.
+
+### New units
+
+Units the user defines are kept apart from the units files they loaded, which are never
+changed. The panel's **Define units** form takes a name and what the units are made of:
+parts, each a units name with an optional prefix (milli, micro, …), exponent and
+multiplier, as a CellML `<unit>`. It checks the name is a CellML name that isn't taken,
+that the parts are known units, and that no units end up made of themselves. New units
+can be changed (a rename follows through the other new units) and removed (unless other
+new units are made of them).
+
+```ts
+interface UnitsDefinition {
+  name: string
+  parts: { units: string; prefix?: string; exponent?: number; multiplier?: number }[]
+}
+```
+
+The definitions are the host's (`v-model:new-units`), to keep with its own data. To
+retrieve them as CellML, `newUnitsFile(definitions)` (or the checker's `newUnitsFile`)
+writes a CellML 2.0 model holding only them, units used by others first:
+
+```xml
+<model xmlns="http://www.cellml.org/cellml/2.0#" name="new_units">
+  <units name="mV_per_ms">
+    <unit prefix="milli" units="volt"/>
+    <unit prefix="milli" units="second" exponent="-1"/>
+  </units>
+</model>
+```
+
+That file loads again as a units file like any other. The demo saves it with a Download
+button (`new-units.cellml`) in the `new-units-actions` slot. Writing and checking the
+definitions doesn't need libCellML; without it, only the names used can't be checked.
 
 ### Without Vue
 

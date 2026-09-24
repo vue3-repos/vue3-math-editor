@@ -73,7 +73,8 @@ else drives where an edit lands.
 | `units/check.ts` | Checking a line's units with libCellML: prechecks, the check model, the analyser |
 | `units/messages.ts` | Reading libCellML's units messages: operands, variables, numbers |
 | `units/useUnitsChecker.ts` | The Vue composable: libcellml.js from the vue3-libcellml.js plugin, if there |
-| `units/UnitsPanel.vue`, `units/panel.ts` | The units panel: units files, each variable's units |
+| `units/UnitsPanel.vue`, `units/panel.ts` | The units panel: units files, new units, each variable's units |
+| `units/definitions.ts`, `units/UnitsDefinitionForm.vue` | New units: definitions, their checks, the units-only CellML file; the form |
 | `App.vue`, `main.ts`, `demo/` | The demo: workbench, units panel and checker; example units |
 
 ## Parsing
@@ -509,6 +510,15 @@ the tests.
   from undefined units are reported. Loading never changes the files: **units the user
   defines go into a units-only CellML file of their own**, handed to the host, never
   written back into a source file (no side effects).
+- **New units** (`units/definitions.ts`) are plain data (`UnitsDefinition`: a name and
+  parts, each units with an optional prefix, exponent and multiplier), kept by the host
+  through the panel's `v-model:new-units`. `definitionProblems` checks one (a CellML name,
+  not taken; parts known; not made of itself, directly or through other new units);
+  `newUnitsFile` writes them as a CellML 2.0 model of units only, dependencies first,
+  as a string (no libCellML). `useUnitsChecker` appends that file to the sources as
+  `'new units'`, so the library, the names suggested and the checks include them, and
+  returns its text for the host to keep. Renaming new units renames them in the other
+  new units' parts; units other new units use can't be removed.
 - **Prechecks.** Before libCellML sees a line, every variable must have units (else "x
   has no units") and every units name, the variables' and the numbers', must be known
   (else "No units called … are defined", underlining the variables and numbers using it).

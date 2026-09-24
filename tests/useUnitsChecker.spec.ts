@@ -5,6 +5,7 @@ import { createApp, effectScope, nextTick, reactive, ref } from 'vue'
 import { parseRow } from '../src/editor/parse'
 import { equationLine, type EquationLine, type VariableUnits } from '../src/editor/units'
 import type { LibCellML } from '../src/units/libcellml'
+import { NEW_UNITS_SOURCE, type UnitsDefinition } from '../src/units/definitions'
 import type { UnitsSource } from '../src/units/library'
 import {
   LIBCELLML_KEY,
@@ -125,6 +126,41 @@ describe('useUnitsChecker', () => {
       'x has no units',
       't has no units',
     ])
+    checker.stop()
+  })
+
+  it('reads the new units as one more units file, which it hands back', async () => {
+    const newUnits = ref<UnitsDefinition[]>([])
+    const checker = setup(
+      {
+        lines: [line('x=v*t')],
+        sources,
+        variableUnits: { x: 'km', v: 'km_per_h', t: 'hour' },
+        newUnits,
+      },
+      lc,
+    )
+    await settled()
+    expect(checker.newUnitsFile.value).toBe('')
+    expect(checker.issues.value.map((issue) => issue.message)).toEqual([
+      'No units called km are defined',
+      'No units called km_per_h are defined',
+      'No units called hour are defined',
+    ])
+
+    newUnits.value = [
+      { name: 'km', parts: [{ prefix: 'kilo', units: 'metre' }] },
+      { name: 'hour', parts: [{ units: 'second', multiplier: 3600 }] },
+      { name: 'km_per_h', parts: [{ units: 'km' }, { units: 'hour', exponent: -1 }] },
+    ]
+    await settled()
+    expect(checker.issues.value).toEqual([])
+    expect(checker.unitsNames.value).toEqual(expect.arrayContaining(['km', 'hour', 'km_per_h']))
+    expect(checker.files.value.at(-1)).toEqual({
+      name: NEW_UNITS_SOURCE,
+      units: ['km', 'hour', 'km_per_h'],
+    })
+    expect(checker.newUnitsFile.value).toContain('<units name="km_per_h">')
     checker.stop()
   })
 

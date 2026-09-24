@@ -4,6 +4,7 @@ import Button from 'primevue/button'
 
 import EquationWorkbench from './components/EquationWorkbench.vue'
 import type { EquationLine, UnitsIssue, VariableUnits } from './editor/units'
+import { type UnitsDefinition, newUnitsFile } from './units/definitions'
 import type { UnitsSource } from './units/library'
 import UnitsPanel from './units/UnitsPanel.vue'
 import { useUnitsChecker } from './units/useUnitsChecker'
@@ -16,6 +17,8 @@ const cellml = new URLSearchParams(window.location.search).has('cellml')
 const lines = ref<EquationLine[]>([])
 const sources = ref<UnitsSource[]>([])
 const variableUnits = ref<VariableUnits>({})
+// Units the user defines, kept apart from the units files.
+const newUnits = ref<UnitsDefinition[]>([])
 
 // Units checking with libCellML, if the plugin is installed.
 // It starts once some units are given, so that equations written without
@@ -24,8 +27,22 @@ const checker = useUnitsChecker({
   lines,
   sources,
   variableUnits,
-  enabled: () => sources.value.length > 0 || Object.keys(variableUnits.value).length > 0,
+  newUnits,
+  enabled: () =>
+    sources.value.length > 0 ||
+    newUnits.value.length > 0 ||
+    Object.keys(variableUnits.value).length > 0,
 })
+
+// The new units as a units-only CellML file, to keep and load again later.
+function downloadNewUnits() {
+  const blob = new Blob([newUnitsFile(newUnits.value)], { type: 'application/xml' })
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(blob)
+  link.download = 'new-units.cellml'
+  link.click()
+  setTimeout(() => URL.revokeObjectURL(link.href), 0)
+}
 
 // Issues set from outside (browser tests, through window.__workbench) take the
 // place of the checker's once given.
@@ -93,6 +110,7 @@ Object.assign(window, {
         <UnitsPanel
           v-model:sources="sources"
           v-model:variable-units="variableUnits"
+          v-model:new-units="newUnits"
           :status="checker.status.value"
           :lines="lines"
           :files="checker.files.value"
@@ -110,6 +128,18 @@ Object.assign(window, {
               data-role="load-example"
               title="Load example units, and units for dV/dt = -(I_ion - I_stim)/C_m"
               @click="loadExample"
+            />
+          </template>
+          <template #new-units-actions>
+            <Button
+              v-if="newUnits.length"
+              icon="pi pi-download"
+              label="Download"
+              size="small"
+              text
+              data-role="download-new-units"
+              title="Save the new units as a CellML file of their own (new-units.cellml)"
+              @click="downloadNewUnits"
             />
           </template>
         </UnitsPanel>

@@ -22,6 +22,7 @@ import {
 
 import type { EquationLine, UnitsIssue, VariableUnits } from '../editor/units'
 import { UnitsChecker, missingUnits } from './check'
+import { NEW_UNITS_SOURCE, type UnitsDefinition, newUnitsFile } from './definitions'
 import { standardUnitsNames, type LibCellML } from './libcellml'
 import { UnitsLibrary, type UnitsSource } from './library'
 
@@ -43,6 +44,8 @@ export interface UnitsCheckerOptions {
   sources: MaybeRefOrGetter<readonly UnitsSource[]>
   // Each variable's units, by name.
   variableUnits: MaybeRefOrGetter<VariableUnits>
+  // Units the user has defined (units panel), read as one more units file.
+  newUnits?: MaybeRefOrGetter<readonly UnitsDefinition[]>
   // Whether to check (default: always). An application can wait until the
   // user has given some units, so that a user who isn't using units doesn't
   // see every variable reported as having none.
@@ -91,8 +94,20 @@ export function useUnitsChecker(options: UnitsCheckerOptions) {
     library.value = null
   }
 
+  // The new units as a units-only CellML file, for the host to keep.
+  const newUnitsText = computed(() => {
+    const definitions = toValue(options.newUnits) ?? []
+    return definitions.length ? newUnitsFile(definitions) : ''
+  })
+
   watch(
-    [lc, () => toValue(options.sources)],
+    [
+      lc,
+      () => [
+        ...toValue(options.sources),
+        ...(newUnitsText.value ? [{ name: NEW_UNITS_SOURCE, text: newUnitsText.value }] : []),
+      ],
+    ],
     ([lib, sources]) => {
       close()
       if (lib) {
@@ -123,10 +138,14 @@ export function useUnitsChecker(options: UnitsCheckerOptions) {
     // Ready, and enabled: issues are being reported.
     checking: computed(() => ready.value && enabled.value),
     issues,
-    // The units files as read: each one's name and the units kept from it.
+    // The units files as read: each one's name and the units kept from it
+    // (the new units last, as NEW_UNITS_SOURCE).
     files: computed(() => library.value?.sources ?? []),
-    // Problems reading the units files.
+    // Problems reading the units files (source NEW_UNITS_SOURCE for the new
+    // units).
     problems: computed(() => library.value?.problems ?? []),
+    // The new units as a CellML file holding only them ('' if there are none).
+    newUnitsFile: newUnitsText,
     // Every units name the equations can use: built in, then the files'.
     unitsNames: computed(() =>
       lc.value && library.value ? [...standardUnitsNames(lc.value), ...library.value.names] : [],

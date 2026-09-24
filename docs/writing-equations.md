@@ -379,6 +379,13 @@ the equations lists every variable your equations use, with a box for its units:
   units are used, so any CellML model will do, CellML 1.0 and 1.1 included. Each file is
   listed with the units it gave, and anything wrong with it (a name defined differently
   in two files, units made from units that aren't defined).
+- **New units.** **Define units** makes units of your own: a name, and what they are made
+  of, each part a units name with an optional prefix (milli, micro, …), exponent and
+  multiplier: `mV_per_ms` is milli volt with milli second to the power −1. They can be
+  used straight away, in equations and for variables, and changed or removed later. They
+  are kept apart from the files you loaded, which are never changed, and are saved as a
+  CellML file of their own (in the demo, **Download** gives `new-units.cellml`), which you
+  can load again later as a units file.
 - **Variables.** Type or pick each variable's units; press Enter or move on to use them.
   A variable without units, or with a units name that isn't defined, is marked.
   Variables you no longer use are kept, greyed, until you remove them.

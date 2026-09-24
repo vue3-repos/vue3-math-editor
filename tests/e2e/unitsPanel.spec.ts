@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { Buffer } from 'node:buffer'
+import { readFile } from 'node:fs/promises'
 
 import { Workbench } from './workbench'
 
@@ -133,6 +134,94 @@ test.describe('with libCellML', () => {
     await unitsInput('x').press('ControlOrMeta+z')
     await expect(wb.line(0)).toContainText('x')
     await expect(wb.line(0)).toContainText('1')
+  })
+})
+
+test.describe('new units', () => {
+  test.beforeEach(async ({ page }) => {
+    wb = new Workbench(page)
+    await wb.goto()
+  })
+
+  const form = () => wb.page.locator('[data-role="units-form"]')
+  const part = (index: number) => form().locator('[data-role="units-form-part"]').nth(index)
+
+  // name = (prefix units)^exponent · …
+  async function define(name: string, parts: [prefix: string, units: string, exponent?: string][]) {
+    await wb.page.locator('[data-role="define-units"]').click()
+    await form().locator('[data-role="units-form-name"]').fill(name)
+    for (const [index, [prefix, units, exponent]] of parts.entries()) {
+      if (index > 0) await form().locator('[data-role="units-form-add-part"]').click()
+      if (prefix) await part(index).locator('select').selectOption(prefix)
+      await part(index)
+        .getByLabel(`Units of part ${index + 1}`)
+        .fill(units)
+      if (exponent)
+        await part(index)
+          .getByLabel(`Exponent of part ${index + 1}`)
+          .fill(exponent)
+    }
+    await form().locator('[data-role="units-form-save"]').click()
+  }
+
+  test('are defined in the panel, used in equations, and downloaded as a file of their own', async () => {
+    await define('ms', [['milli', 'second']])
+    await define('mV_per_ms', [
+      ['milli', 'volt'],
+      ['', 'ms', '-1'],
+    ])
+    await expect(
+      wb.page.locator('[data-units="mV_per_ms"] [data-role="new-units-definition"]'),
+    ).toHaveText('= milli volt · ms^-1')
+
+    await wb.focusLine(0)
+    await wb.type('r=2{mV_per_ms}')
+    await giveUnits('r', 'mV_per_ms')
+    await expect(summary()).toHaveText('No units problems in 1 equation.')
+
+    const [download] = await Promise.all([
+      wb.page.waitForEvent('download'),
+      wb.page.locator('[data-role="download-new-units"]').click(),
+    ])
+    expect(download.suggestedFilename()).toBe('new-units.cellml')
+    const text = await readFile((await download.path())!, 'utf8')
+    expect(text).toContain('<units name="ms">')
+    expect(text).toContain('<unit units="ms" exponent="-1"/>')
+    expect(text).not.toContain('<component')
+  })
+
+  test('the form says what’s wrong, and names in use can’t be taken', async () => {
+    await wb.page.locator('[data-role="define-units"]').click()
+    await form().locator('[data-role="units-form-name"]').fill('volt')
+    await part(0).getByLabel('Units of part 1').fill('furlong')
+    await form().locator('[data-role="units-form-save"]').click()
+    await expect(form().locator('[data-role="units-form-problems"] li')).toHaveText([
+      'There are units called volt already',
+      'no units called furlong are defined',
+    ])
+  })
+
+  test('renaming follows through other new units; units in use can’t be removed', async () => {
+    await define('ms', [['milli', 'second']])
+    await define('per_ms', [['', 'ms', '-1']])
+    const ms = wb.page.locator('[data-units="ms"]')
+    await expect(ms.getByRole('button', { name: 'Remove ms' })).toBeDisabled()
+
+    await ms.getByRole('button', { name: 'Change ms' }).click()
+    await form().locator('[data-role="units-form-name"]').fill('msec')
+    await form().locator('[data-role="units-form-save"]').click()
+    await expect(
+      wb.page.locator('[data-units="per_ms"] [data-role="new-units-definition"]'),
+    ).toHaveText('= msec^-1')
+
+    await wb.page
+      .locator('[data-units="per_ms"]')
+      .getByRole('button', { name: 'Remove per_ms' })
+      .click()
+    await expect(wb.page.locator('[data-units="per_ms"]')).toHaveCount(0)
+    await expect(
+      wb.page.locator('[data-units="msec"]').getByRole('button', { name: 'Remove msec' }),
+    ).toBeEnabled()
   })
 })
 

@@ -1,11 +1,13 @@
 <script setup lang="ts">
-// The units side of an equation workbench: the units files loaded, and each
-// variable's units. It shows what useUnitsChecker reports and hands edits back
-// through v-model:sources and v-model:variable-units; it never touches
-// libCellML itself, so it works (with less to say) without it.
+// The units side of an equation workbench: the units files loaded, units the
+// user defines (new units, kept apart from the files), and each variable's
+// units. It shows what useUnitsChecker reports and hands edits back through
+// v-model:sources, v-model:new-units and v-model:variable-units; it never
+// touches libCellML itself, so it works (with less to say) without it.
 //
 //   <UnitsPanel
 //     v-model:sources="sources" v-model:variable-units="variableUnits"
+//     v-model:new-units="newUnits"
 //     :lines="lines" :status="checker.status" :files="checker.files"
 //     :problems="checker.problems" :units-names="checker.unitsNames"
 //     :issues="checker.issues" />
@@ -16,7 +18,9 @@ import Card from 'primevue/card'
 import Tag from 'primevue/tag'
 
 import type { EquationLine, UnitsIssue, VariableUnits } from '../editor/units'
+import { NEW_UNITS_SOURCE, type UnitsDefinition, describeDefinition, usedBy } from './definitions'
 import type { UnitsLibraryProblem, UnitsSource } from './library'
+import UnitsDefinitionForm from './UnitsDefinitionForm.vue'
 import { variableRows, withSources, withUnits } from './panel'
 import type { UnitsCheckerStatus } from './useUnitsChecker'
 
@@ -42,6 +46,7 @@ const props = withDefaults(
 
 const sources = defineModel<UnitsSource[]>('sources', { default: () => [] })
 const variableUnits = defineModel<VariableUnits>('variableUnits', { default: () => ({}) })
+const newUnits = defineModel<UnitsDefinition[]>('newUnits', { default: () => [] })
 
 const ready = computed(() => props.status === 'ready')
 const rows = computed(() =>
@@ -94,6 +99,56 @@ function removeFile(name: string) {
 
 const problemsIn = (name: string) => props.problems.filter((problem) => problem.source === name)
 const unitsIn = (name: string) => props.files.find((file) => file.name === name)?.units ?? []
+
+// New units: defined here, kept apart from the files (definitions.ts).
+
+// The definition being changed (its index), or a new one (null); undefined
+// when the form is closed.
+const editing = ref<number | null | undefined>(undefined)
+const edited = computed(() =>
+  editing.value === undefined || editing.value === null ? null : newUnits.value[editing.value],
+)
+const otherNewUnits = computed(() => newUnits.value.filter((_, index) => index !== editing.value))
+// Names the form can check against, without the one being changed.
+const knownForForm = computed(() =>
+  ready.value ? props.unitsNames.filter((name) => name !== edited.value?.name) : null,
+)
+const choicesForForm = computed(() =>
+  [...new Set([...props.unitsNames, ...otherNewUnits.value.map((units) => units.name)])].filter(
+    (name) => name !== edited.value?.name,
+  ),
+)
+const newUnitsProblems = computed(() => problemsIn(NEW_UNITS_SOURCE))
+
+function saveDefinition(definition: UnitsDefinition) {
+  const list = [...newUnits.value]
+  const index = editing.value
+  if (index === null || index === undefined) {
+    list.push(definition)
+  } else {
+    const old = list[index].name
+    list[index] = definition
+    // Other new units made of these follow a rename.
+    if (old !== definition.name) {
+      for (const [i, other] of list.entries()) {
+        if (other.parts.some((part) => part.units === old)) {
+          list[i] = {
+            ...other,
+            parts: other.parts.map((part) =>
+              part.units === old ? { ...part, units: definition.name } : part,
+            ),
+          }
+        }
+      }
+    }
+  }
+  newUnits.value = list
+  editing.value = undefined
+}
+
+function removeDefinition(index: number) {
+  newUnits.value = newUnits.value.filter((_, i) => i !== index)
+}
 
 // Variables.
 
@@ -182,6 +237,92 @@ const stateLabel = { ok: '', missing: 'no units', unknown: 'unknown units' }
               </li>
             </ul>
           </li>
+        </ul>
+      </section>
+
+      <section class="units-section" aria-labelledby="units-new-title" data-role="new-units">
+        <div class="section-head">
+          <h3 id="units-new-title">New units</h3>
+          <div class="section-actions">
+            <slot name="new-units-actions" :definitions="newUnits" />
+            <Button
+              icon="pi pi-plus"
+              label="Define units"
+              size="small"
+              text
+              data-role="define-units"
+              :disabled="editing !== undefined"
+              title="Define units of your own, kept in a file apart from the units files"
+              @click="editing = null"
+            />
+          </div>
+        </div>
+
+        <p v-if="newUnits.length === 0 && editing === undefined" class="hint">
+          Units you define are kept in a units file of their own, apart from the files loaded.
+        </p>
+
+        <ul v-if="newUnits.length" class="new-units">
+          <li
+            v-for="(definition, index) in newUnits"
+            :key="definition.name"
+            :data-units="definition.name"
+          >
+            <UnitsDefinitionForm
+              v-if="editing === index"
+              :definition="definition"
+              :others="otherNewUnits"
+              :known="knownForForm"
+              :choices="choicesForForm"
+              @save="saveDefinition"
+              @cancel="editing = undefined"
+            />
+            <div v-else class="new-units-row">
+              <code class="new-units-name">{{ definition.name }}</code>
+              <span class="new-units-definition" data-role="new-units-definition">
+                = {{ describeDefinition(definition) }}
+              </span>
+              <Button
+                icon="pi pi-pencil"
+                size="small"
+                text
+                rounded
+                severity="secondary"
+                :aria-label="`Change ${definition.name}`"
+                title="Change these units"
+                :disabled="editing !== undefined"
+                @click="editing = index"
+              />
+              <Button
+                icon="pi pi-times"
+                size="small"
+                text
+                rounded
+                severity="secondary"
+                :aria-label="`Remove ${definition.name}`"
+                :title="
+                  usedBy(definition.name, newUnits).length
+                    ? `Used by ${usedBy(definition.name, newUnits).join(', ')}`
+                    : 'Remove these units'
+                "
+                :disabled="editing !== undefined || usedBy(definition.name, newUnits).length > 0"
+                @click="removeDefinition(index)"
+              />
+            </div>
+          </li>
+        </ul>
+
+        <UnitsDefinitionForm
+          v-if="editing === null"
+          :others="otherNewUnits"
+          :known="knownForForm"
+          :choices="choicesForForm"
+          @save="saveDefinition"
+          @cancel="editing = undefined"
+        />
+
+        <ul v-if="newUnitsProblems.length" class="problems" data-role="new-units-problems">
+          <li v-for="(problem, index) in newUnitsProblems" :key="index">{{ problem.message }}</li>
         </ul>
       </section>
 
@@ -341,6 +482,35 @@ const stateLabel = { ok: '', missing: 'no units', unknown: 'unknown units' }
   padding-left: 1.1rem;
   font-size: 0.82rem;
   color: #92400e;
+}
+
+.new-units {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.new-units-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.new-units-name {
+  font-size: 0.85rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 0.25rem;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.new-units-definition {
+  flex: 1;
+  font-size: 0.85rem;
+  color: #334155;
+  overflow-wrap: anywhere;
 }
 
 .missing-count {
