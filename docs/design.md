@@ -302,7 +302,7 @@ pastes back.
   rects and skips spacing, struts and padding.
 - A gap's caret sits midway between the neighbouring atoms. Its height follows the
   adjacent text, not a tall neighbour. In an empty row there is no caret line; the active
-  placeholder is highlighted and blinks instead.
+  placeholder is highlighted (steadily, without blinking) instead.
 - A click goes to the innermost row whose painted box contains the point, at the gap
   nearest the click's x. A click on a fraction bar goes before or after the whole
   fraction, not into the denominator.

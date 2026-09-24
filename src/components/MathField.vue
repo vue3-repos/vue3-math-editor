@@ -597,7 +597,6 @@ defineExpose({ focus: () => surfaceEl.value?.focus() })
   color: #2563eb;
   background: rgba(37, 99, 235, 0.12);
   border-radius: 2px;
-  animation: math-field-blink 1.1s step-end infinite;
 }
 
 @keyframes math-field-blink {
