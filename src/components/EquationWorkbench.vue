@@ -28,6 +28,8 @@ import {
   type EditorState,
   emptyState,
   insertAbs,
+  insertCeiling,
+  insertFloor,
   insertDerivative,
   insertPiecewise,
   insertFraction,
@@ -274,6 +276,8 @@ const structureButtons: ToolButton[] = [
   { latex: '\\sqrt{x}', title: 'Square root  ( \\sqrt )', command: insertSquareRoot },
   { latex: '\\sqrt[n]{x}', title: 'nth root  ( \\root )', command: insertNthRoot },
   { latex: '|x|', title: 'Absolute value  ( | )', command: insertAbs },
+  { latex: '\\lfloor x\\rfloor', title: 'Floor  ( floor( or \\floor )', command: insertFloor },
+  { latex: '\\lceil x\\rceil', title: 'Ceiling  ( ceil( or \\ceil )', command: insertCeiling },
   {
     latex: '\\frac{\\mathrm{d}y}{\\mathrm{d}x}',
     title: 'Derivative  ( \\dd )',

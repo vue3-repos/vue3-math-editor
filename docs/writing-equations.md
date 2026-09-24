@@ -134,6 +134,14 @@ The known functions are every function CellML 2.0 allows:
 takes one or two. So `floor`, `min`, `max` and `rem` can't be used as variable names;
 `Vmax` or `t_min` are fine.
 
+**Floor and ceiling are drawn as brackets**, as in print, in the same way that ∧ and ¬
+are drawn as symbols: ⌊x⌋ and ⌈x⌉. Typing `floor(` turns the name into ⌊ ⌋ with the
+caret inside, and `ceil(` or `ceiling(` into ⌈ ⌉; `)` then leaves them, so typing
+`floor(x/2)` gives ⌊x/2⌋. `\floor` and `\ceil` (and the toolbar buttons) insert them
+directly, or put them round a selection. Only the whole name converts: `myfloor(x)` is
+a variable times x. Pasted `floor(x)`, `\lfloor x \rfloor` and `\left\lceil x\right\rceil`
+all come in as brackets too.
+
 | You type | Meaning |
 |---|---|
 | `sin(x)` | sin of x |
@@ -396,6 +404,7 @@ Type `\`, the command's name, then Space, Enter, Tab or `(`. Esc cancels.
 | `\le`, `\and`, `\not`, … | a comparison or logical operator (see *Conditions*) |
 | `\pi`, `\e`, `\inf`, `\nan`, `\true`, `\false` | a constant (see *Constants*) |
 | `\cases` (or `\piecewise`), `\otherwise` | a piecewise definition, or its otherwise |
+| `\floor`, `\ceil` | ⌊☐⌋, ⌈☐⌉ |
 | anything else | the name typed out as letters (`\speed` gives `speed`) |
 
 ## Not supported yet

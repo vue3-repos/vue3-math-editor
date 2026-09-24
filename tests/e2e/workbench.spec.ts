@@ -281,6 +281,17 @@ test.describe('constants and functions', () => {
     await wb.expectMathJson(['Multiply', 2, 'Pi'])
   })
 
+  test('floor( and ceil( become ⌊ ⌋ and ⌈ ⌉, and the toolbar inserts them', async () => {
+    await wb.type('floor(x/2')
+    await wb.press(' ')
+    await wb.type(')+')
+    await wb.page.locator('button[title^="Ceiling"]').click()
+    await wb.type('y')
+    await wb.expectMathJson(['Add', ['Floor', ['Divide', 'x', 2]], ['Ceil', 'y']])
+    await expect(wb.line(0)).toContainText('⌊')
+    await expect(wb.line(0)).toContainText('⌉')
+  })
+
   test('floor, ceiling, min, max and rem are functions', async () => {
     await wb.type('floor(x)+max(a,b)+rem(n,2)')
     await wb.expectMathJson(['Add', ['Floor', 'x'], ['Max', 'a', 'b'], ['Remainder', 'n', 2]])

@@ -103,7 +103,7 @@ export function show(state: EditorState): string {
           out += `^{${child('sup')}}`
           break
         case 'group':
-          out += atom.open === '|' ? `|${child('body')}|` : `(${child('body')})`
+          out += `${atom.open}${child('body')}${atom.close}`
           break
         case 'root':
           out += atom.index ? `√[${child('index')}]{${child('body')}}` : `√{${child('body')}}`

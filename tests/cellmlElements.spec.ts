@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import { latexToRow, rowToLatexSource } from '../src/editor/clipboard'
 import { emptyState, namedCommand } from '../src/editor/commands'
+import { deserializeAtoms, serializeAtoms } from '../src/editor/clipboard'
 import { CONSTANTS } from '../src/editor/constants'
 import { contentMathML } from '../src/editor/exports'
 import { nameOccurrences } from '../src/editor/identifiers'
@@ -10,7 +11,7 @@ import { type Row, row, superscript, symbol } from '../src/editor/layout'
 import { parseRow } from '../src/editor/parse'
 import { FUNCTION_REGISTRY } from '../src/registry/nodes'
 import { KATEX_EDITOR_OPTIONS, rowToLatex } from '../src/renderers/layoutLatex'
-import { json, press, type } from './editorHelpers'
+import { json, press, show, type } from './editorHelpers'
 
 const jsonOf = (atoms: Row) => json({ root: atoms, cursor: { path: [], offset: 0 } })
 const constant = (name: string) => namedCommand(name)(emptyState()).root
@@ -150,7 +151,7 @@ describe('functions', () => {
     const state = press(emptyState(), 'arcsinh(x)+floor(y)+max(a,b)')
     const latex = rowToLatexSource(state.root)
     expect(latex).toBe(
-      '\\operatorname{arcsinh}\\left(x\\right)+\\operatorname{floor}\\left(y\\right)+\\max \\left(a,b\\right)',
+      '\\operatorname{arcsinh}\\left(x\\right)+\\left\\lfloor y\\right\\rfloor +\\max \\left(a,b\\right)',
     )
     expect(jsonOf(latexToRow(latex))).toEqual([
       'Add',
@@ -167,5 +168,59 @@ describe('functions', () => {
         katex.renderToString(latex, { ...KATEX_EDITOR_OPTIONS, throwOnError: true }),
       ).not.toThrow()
     }
+  })
+})
+
+describe('floor and ceiling brackets', () => {
+  it('typing floor( or ceil( turns the name into the brackets; ) leaves them', () => {
+    expect(show(type('floor('))).toBe('⌊‸⌋')
+    expect(show(type('floor(x)+1'))).toBe('⌊x⌋+1‸')
+    expect(show(type('ceil(x)'))).toBe('⌈x⌉‸')
+    expect(show(type('y=2ceiling(t/2)'))).toBe('y=2⌈[t/2]⌉‸')
+  })
+
+  it('only a whole name is converted', () => {
+    expect(show(type('myfloor(x)'))).toBe('myfloor(x)‸')
+    expect(show(type('floors(x)'))).toBe('floors(x)‸')
+  })
+
+  it('\\floor and \\ceil insert them, or put them round the selection', () => {
+    expect(show(namedCommand('floor')(emptyState()))).toBe('⌊‸⌋')
+    expect(show(namedCommand('lceil')(emptyState()))).toBe('⌈‸⌉')
+    const selected = press(type('x+1'), 'SelectAll')
+    expect(show(namedCommand('floor')(selected))).toBe('⌊x+1⌋‸')
+  })
+
+  it('parse as the floor and ceiling functions', () => {
+    expect(json(type('floor(x/2)'))).toEqual(['Floor', ['Divide', 'x', 2]])
+    expect(json(type('ceil(x)-floor(x)'))).toEqual(['Subtract', ['Ceil', 'x'], ['Floor', 'x']])
+    expect(contentMathML(type('floor(x)').root)).toMatch(/<floor\/>\s*<ci>x<\/ci>/)
+  })
+
+  it('are drawn as brackets, and KaTeX accepts them', () => {
+    const latex = rowToLatex(type('floor(x)+ceil(y)').root)
+    expect(latex).toContain('\\left\\lfloor')
+    expect(latex).toContain('\\right\\rceil')
+    expect(() =>
+      katex.renderToString(latex, { ...KATEX_EDITOR_OPTIONS, throwOnError: true }),
+    ).not.toThrow()
+  })
+
+  it('copy as LaTeX and paste back, and paste from common forms', () => {
+    const tree = type('floor(x)+ceil(y)').root
+    const latex = rowToLatexSource(tree)
+    expect(latex).toBe('\\left\\lfloor x\\right\\rfloor +\\left\\lceil y\\right\\rceil')
+    const pasted = (text: string) =>
+      show({ root: latexToRow(text), cursor: { path: [], offset: 0 } })
+    expect(pasted(latex)).toBe('‸⌊x⌋+⌈y⌉')
+    expect(pasted('\\lfloor x \\rfloor')).toBe('‸⌊x⌋')
+    expect(pasted('floor(x) + ceiling(y)')).toBe('‸⌊x⌋+⌈y⌉')
+    expect(pasted('\\operatorname{floor}\\left(x\\right)')).toBe('‸⌊x⌋')
+  })
+
+  it('survive the editor clipboard format', () => {
+    const tree = type('floor(x)').root
+    const copy = deserializeAtoms(serializeAtoms(tree))!
+    expect(show({ root: copy, cursor: { path: [], offset: 0 } })).toBe('‸⌊x⌋')
   })
 })

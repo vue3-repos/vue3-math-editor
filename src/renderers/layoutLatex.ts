@@ -15,7 +15,7 @@ import { rowPathsEqual } from '../editor/layout'
 import { GREEK_NAMES, nameRuns, numberRuns } from '../editor/identifiers'
 import { constantForSymbol } from '../editor/constants'
 import { CONDITION_OPERATORS } from '../editor/operators'
-import { getFunctionDefinition } from '../registry/nodes'
+import { delimiterLatex, getFunctionDefinition } from '../registry/nodes'
 
 export interface LayoutLatexOptions {
   // Row the cursor is in. If it is empty, its placeholder gets the
@@ -244,8 +244,8 @@ function renderAtom(
       )
 
     case 'group': {
-      const open = atom.open === '|' ? '|' : '('
-      const close = atom.close === '|' ? '|' : ')'
+      const open = delimiterLatex(atom.open)
+      const close = delimiterLatex(atom.close)
       return tag(atom.id, `\\left${open}${child(atom.body, 'body')}\\right${close}`)
     }
 

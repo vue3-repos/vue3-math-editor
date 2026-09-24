@@ -49,6 +49,7 @@
 //   `2e-x` are 2·e and 2·e − x.
 
 import type { AstNode, NumberNode } from '../types/ast'
+import { functionForBracket } from '../registry/nodes'
 import { constantForSymbol } from './constants'
 import { continuesName, functionForSpelling, startsName } from './identifiers'
 import { numberAt } from './numbers'
@@ -442,10 +443,13 @@ class Parser {
           numerator: this.child(atom.num),
           denominator: this.child(atom.den),
         }
-      case 'group':
-        return atom.open === '|'
-          ? { type: 'Abs', value: this.child(atom.body) }
-          : { type: 'Group', value: this.child(atom.body) }
+      case 'group': {
+        if (atom.open === '|') return { type: 'Abs', value: this.child(atom.body) }
+        // ⌊x⌋, ⌈x⌉: floor and ceiling.
+        const name = functionForBracket(atom.open)
+        if (name) return { type: 'FunctionCall', name, args: [this.child(atom.body)] }
+        return { type: 'Group', value: this.child(atom.body) }
+      }
       case 'root':
         return {
           type: 'Root',

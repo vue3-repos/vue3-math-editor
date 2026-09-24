@@ -15,10 +15,10 @@
 // character at a time; the grouping is worked out here, when parsing and
 // rendering.
 
-import { type Atom, type Row, childRows } from './layout'
+import { type Atom, type GroupDelimiter, type Row, childRows } from './layout'
 import { constantForSymbol } from './constants'
 import { type NumberRun, numberAt } from './numbers'
-import { FUNCTION_REGISTRY } from '../registry/nodes'
+import { FUNCTION_REGISTRY, bracketsForFunction } from '../registry/nodes'
 
 // Names written as a command (\alpha) that insert a Greek letter.
 export const GREEK_NAMES: ReadonlySet<string> = new Set([
@@ -144,4 +144,22 @@ export function nameOccurrences(root: Row, name: string): string[][] {
 
   visit(root)
   return found
+}
+
+// A floor or ceiling written as a name straight before `offset`: typed
+// letters spelling floor, ceil or ceiling, or the function atom. Where it
+// starts and the bracket it becomes, so that "floor(" turns into ⌊ ⌋.
+export function bracketFunctionBefore(
+  row: Row,
+  offset: number,
+): { start: number; open: GroupDelimiter } | null {
+  const before = row[offset - 1]
+  if (before?.kind === 'function') {
+    const brackets = bracketsForFunction(before.name)
+    return brackets ? { start: offset - 1, open: brackets.open as GroupDelimiter } : null
+  }
+
+  const run = nameRuns(row.slice(0, offset)).find((r) => r.end === offset)
+  const brackets = run?.functionName ? bracketsForFunction(run.functionName) : undefined
+  return run && brackets ? { start: run.start, open: brackets.open as GroupDelimiter } : null
 }

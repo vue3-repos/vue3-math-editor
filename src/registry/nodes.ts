@@ -84,3 +84,33 @@ export function functionLatex(name: string): string {
     ? `\\${definition.latexName} `
     : `\\operatorname{${definition.latexName}}`
 }
+
+// Functions drawn as brackets rather than by name: ⌊x⌋ and ⌈x⌉. A bracket
+// group with one of these opening delimiters is that function applied to its
+// contents (see layout.ts GroupDelimiter).
+interface BracketFunction {
+  open: string
+  close: string
+  latexOpen: string
+  latexClose: string
+}
+
+const BRACKET_FUNCTIONS: Record<string, BracketFunction> = {
+  floor: { open: '⌊', close: '⌋', latexOpen: '\\lfloor', latexClose: '\\rfloor' },
+  ceiling: { open: '⌈', close: '⌉', latexOpen: '\\lceil', latexClose: '\\rceil' },
+}
+
+export const bracketsForFunction = (name: string) => BRACKET_FUNCTIONS[name]
+
+export function functionForBracket(open: string): string | undefined {
+  return Object.keys(BRACKET_FUNCTIONS).find((name) => BRACKET_FUNCTIONS[name].open === open)
+}
+
+// LaTeX for a group's delimiters: ( ), | |, \lfloor \rfloor, \lceil \rceil.
+export function delimiterLatex(delimiter: string): string {
+  for (const brackets of Object.values(BRACKET_FUNCTIONS)) {
+    if (delimiter === brackets.open) return brackets.latexOpen
+    if (delimiter === brackets.close) return brackets.latexClose
+  }
+  return delimiter === '|' ? '|' : delimiter === ')' ? ')' : '('
+}

@@ -37,7 +37,7 @@ import {
   symbol,
 } from './layout'
 import { collapseSelection, selectionOf } from './selection'
-import { GREEK_NAMES, functionForSpelling } from './identifiers'
+import { GREEK_NAMES, bracketFunctionBefore, functionForSpelling } from './identifiers'
 import { constantForCommand } from './constants'
 import { combinedWithEquals, conditionOperatorForCommand } from './operators'
 import { getFunctionDefinition } from '../registry/nodes'
@@ -476,14 +476,15 @@ export const insertSuperscript: Command = (current) => {
   return insertStructure(superscript(), 'sup')(state)
 }
 
-// The nearest enclosing bracket group opened with `open`, at any depth.
+// The nearest enclosing bracket group opened with one of `opens`, at any
+// depth.
 function enclosingGroup(
   state: EditorState,
-  open: GroupDelimiter,
+  opens: readonly GroupDelimiter[],
 ): { owner: Owner; depth: number } | null {
   for (let depth = state.cursor.path.length; depth > 0; depth--) {
     const owner = ownerOf(state, depth)!
-    if (owner.atom.kind === 'group' && owner.atom.open === open) return { owner, depth }
+    if (owner.atom.kind === 'group' && opens.includes(owner.atom.open)) return { owner, depth }
   }
   return null
 }
@@ -491,11 +492,11 @@ function enclosingGroup(
 // ")" or a closing "|": leave the enclosing group. Typed directly inside the
 // group, anything after the cursor moves out with it, so "(x|+1" + ")" gives
 // "(x)+1".
-function closeGroup(open: GroupDelimiter): Command {
+function closeGroup(opens: readonly GroupDelimiter[]): Command {
   return (current) => {
     // A selection stays inside the brackets being closed.
     const state = current.anchor ? collapseSelection(current, 'end') : current
-    const found = enclosingGroup(state, open)
+    const found = enclosingGroup(state, opens)
     if (!found) return current
 
     const { owner, depth } = found
@@ -512,17 +513,41 @@ function closeGroup(open: GroupDelimiter): Command {
   }
 }
 
-// "(": an empty group with the cursor inside, or brackets round the selection.
-export const openParen: Command = wrapSelection((content) => group(content, '('), 'after', 'body')
+const bracketsRound = (open: GroupDelimiter): Command =>
+  wrapSelection((content) => group(content, open), 'after', 'body')
 
-export const closeParen: Command = closeGroup('(')
+// "(": an empty group with the cursor inside, or brackets round the
+// selection. Straight after a typed floor, ceil or ceiling, the name becomes
+// the function's brackets instead: floor( gives ⌊‸⌋, as with <= giving ≤.
+export const openParen: Command = (state) => {
+  if (!selectionOf(state)) {
+    const { path, offset } = state.cursor
+    const found = bracketFunctionBefore(requireRow(state.root, path), offset)
+    if (found) {
+      return splice(state, path, found.start, offset - found.start, [group([], found.open)], {
+        path: [...path, { atom: found.start, branch: 'body' }],
+        offset: 0,
+      })
+    }
+  }
+
+  return bracketsRound('(')(state)
+}
+
+// \floor, \ceil: ⌊‸⌋ or ⌈‸⌉, or round the selection.
+export const insertFloor: Command = bracketsRound('⌊')
+export const insertCeiling: Command = bracketsRound('⌈')
+
+// ")" closes the nearest brackets, floor or ceiling brackets included (the
+// ")" of "floor(x)").
+export const closeParen: Command = closeGroup(['(', '⌊', '⌈'])
 
 // "|" closes the absolute value the cursor is directly inside, otherwise
 // opens a new one; with a selection, puts |…| round it.
 export const absBar: Command = (state) => {
   if (selectionOf(state)) return insertAbs(state)
   const owner = ownerOf(state)
-  if (owner?.atom.kind === 'group' && owner.atom.open === '|') return closeGroup('|')(state)
+  if (owner?.atom.kind === 'group' && owner.atom.open === '|') return closeGroup(['|'])(state)
   return insertStructure(group([], '|'), 'body')(state)
 }
 
@@ -757,6 +782,13 @@ export function namedCommand(name: string): Command {
       return insertPiecewise
     case 'otherwise':
       return addOtherwise
+    case 'floor':
+    case 'lfloor':
+      return insertFloor
+    case 'ceil':
+    case 'ceiling':
+    case 'lceil':
+      return insertCeiling
   }
 
   const operator = conditionOperatorForCommand(name)

@@ -12,7 +12,13 @@
 // Everything here is pure; MathField wires it to the browser's clipboard
 // events.
 
-import { GREEK_NAMES, functionForSpelling, nameRuns, numberRuns } from './identifiers'
+import {
+  GREEK_NAMES,
+  bracketFunctionBefore,
+  functionForSpelling,
+  nameRuns,
+  numberRuns,
+} from './identifiers'
 import { constantForLatexCommand, constantForSymbol, constantForUprightText } from './constants'
 import {
   CONDITION_OPERATORS,
@@ -22,6 +28,7 @@ import {
 } from './operators'
 import {
   type Atom,
+  type GroupDelimiter,
   type Row,
   childRows,
   derivative,
@@ -35,7 +42,7 @@ import {
   superscript,
   symbol,
 } from './layout'
-import { functionLatex } from '../registry/nodes'
+import { delimiterLatex, functionLatex } from '../registry/nodes'
 
 export const CLIPBOARD_MIME = 'application/x-semantic-math+json'
 
@@ -91,8 +98,8 @@ function isAtom(value: unknown): value is Atom {
     case 'group':
       return (
         isRow(value.body) &&
-        ['(', ')', '|'].includes(value.open as string) &&
-        ['(', ')', '|'].includes(value.close as string)
+        DELIMITERS.includes(value.open as string) &&
+        DELIMITERS.includes(value.close as string)
       )
     case 'derivative':
       return isRow(value.expr) && isRow(value.variable)
@@ -232,10 +239,13 @@ function atomLatex(atom: Atom, previous: Atom | undefined): string {
       return atom.index
         ? `\\sqrt[${rowToLatexSource(atom.index)}]{${rowToLatexSource(atom.body)}}`
         : `\\sqrt{${rowToLatexSource(atom.body)}}`
-    case 'group':
-      return atom.open === '|'
-        ? `\\left|${rowToLatexSource(atom.body)}\\right|`
-        : `\\left(${rowToLatexSource(atom.body)}\\right)`
+    case 'group': {
+      // \left( … \right), \left| … \right|, \left\lfloor … \right\rfloor, …
+      const open = delimiterLatex(atom.open)
+      const close = delimiterLatex(atom.close)
+      const space = (d: string) => (/[a-z]$/.test(d) ? ' ' : '')
+      return `\\left${open}${space(open)}${rowToLatexSource(atom.body)}\\right${close}${space(close)}`
+    }
     case 'derivative':
       return `\\frac{\\mathrm{d}${rowToLatexSource(atom.expr)}}{\\mathrm{d}${rowToLatexSource(atom.variable)}}`
     case 'piecewise': {
@@ -287,6 +297,7 @@ function tokenize(text: string): Token[] {
   return tokens
 }
 
+const DELIMITERS = ['(', ')', '|', '⌊', '⌋', '⌈', '⌉']
 const TEXT_COMMANDS = new Set(['text', 'textrm', 'textnormal', 'textit', 'mbox', 'mathrm'])
 const CASES_ENVIRONMENTS = new Set(['cases', 'dcases', 'rcases'])
 const SPACING = new Set([',', ';', ':', '!', ' ', 'quad', 'qquad', 'displaystyle', 'textstyle'])
@@ -297,6 +308,7 @@ interface Stop {
   close?: boolean // at "}"
   char?: string // at this character (")" or "|" or "]")
   right?: boolean // at \right
+  command?: string // at this command (\rfloor)
   operator?: boolean // before a top-level operator (a fraction's denominator)
   closing?: boolean // before ")" or "]", or "|" when inside |…| (likewise)
 }
@@ -335,6 +347,7 @@ class LatexReader {
     if (this.casesDepth > 0 && this.atCellEnd()) return true
     if (stop.close && token.kind === 'close') return true
     if (stop.right && token.kind === 'command' && token.name === 'right') return true
+    if (stop.command && token.kind === 'command' && token.name === stop.command) return true
     if (token.kind === 'char') {
       if (stop.char && token.value === stop.char) return true
       if (stop.operator && OPERATOR_CHARS.has(token.value)) return true
@@ -435,9 +448,11 @@ class LatexReader {
   private readChar(char: string, atoms: Row): void {
     switch (char) {
       case '(':
-      case '[':
-        atoms.push(group(this.readUntilChar(char === '(' ? ')' : ']'), '('))
+      case '[': {
+        const body = this.readUntilChar(char === '(' ? ')' : ']')
+        this.pushBrackets(atoms, body, char === '(' ? '(' : '[')
         return
+      }
       case '|': {
         this.absDepth++
         const body = this.readUntilChar('|')
@@ -482,6 +497,19 @@ class LatexReader {
       }
       default:
         atoms.push(symbol(char === '−' ? '-' : char))
+    }
+  }
+
+  // Brackets round `body`. Round brackets straight after floor or ceil(ing)
+  // written as a name (typed letters, \operatorname{floor}) are that
+  // function's brackets instead: "floor(x)" is ⌊x⌋. Square brackets are round.
+  private pushBrackets(atoms: Row, body: Row, open: GroupDelimiter | '['): void {
+    const bracket = open === '(' ? bracketFunctionBefore(atoms, atoms.length) : null
+
+    if (bracket) {
+      atoms.splice(bracket.start, atoms.length - bracket.start, group(body, bracket.open))
+    } else {
+      atoms.push(group(body, open === '[' ? '(' : open))
     }
   }
 
@@ -614,16 +642,31 @@ class LatexReader {
 
       case 'left': {
         const delimiter = this.next()
-        const bar =
+        const name =
           delimiter?.kind === 'char'
-            ? delimiter.value === '|'
-            : delimiter?.kind === 'command' && delimiter.name === '|'
+            ? delimiter.value
+            : delimiter?.kind === 'command'
+              ? delimiter.name
+              : ''
         const body = this.readRow({ right: true })
         this.next() // \right
         this.next() // its delimiter
-        atoms.push(group(body, bar ? '|' : '('))
+        const open = name === '|' ? '|' : name === 'lfloor' ? '⌊' : name === 'lceil' ? '⌈' : '('
+        this.pushBrackets(atoms, body, open)
         return
       }
+
+      // \lfloor x \rfloor and \lceil x \rceil without \left/\right.
+      case 'lfloor':
+      case 'lceil': {
+        const body = this.readRow({ command: name === 'lfloor' ? 'rfloor' : 'rceil' })
+        this.next() // \rfloor, \rceil
+        atoms.push(group(body, name === 'lfloor' ? '⌊' : '⌈'))
+        return
+      }
+      case 'rfloor':
+      case 'rceil':
+        return // unmatched
 
       case 'right':
         return // unmatched

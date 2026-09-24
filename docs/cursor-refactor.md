@@ -263,8 +263,16 @@ Every element in CellML 2.0's MathML subset (spec table 2.1) can now be produced
   `\operatorname{arcsinh}`, which pastes back. `rem` exports to MathJSON as `Remainder`,
   not `Mod`, since `Mod` takes the sign of the divisor. A test checks the registry
   against the spec's list.
-- Not done: ⌊x⌋ / ⌈x⌉ bracket notation for floor and ceiling (they are drawn as named
-  functions), and argument-count checks (e.g. `rem` with one argument).
+- **Floor and ceiling as brackets:** ⌊x⌋ and ⌈x⌉ are bracket groups (`GroupDelimiter`
+  gains `⌊ ⌋ ⌈ ⌉`, like `| |` for abs), parsed as `FunctionCall` floor / ceiling, so the
+  exports are unchanged. `(` straight after a whole name spelling floor, ceil or
+  ceiling (or its function atom) replaces the name with the brackets
+  (`bracketFunctionBefore`, identifiers.ts), in the same spirit as `<=` becoming ≤; `)`
+  closes the nearest round, floor or ceiling brackets. `\floor` / `\ceil` insert or
+  wrap. LaTeX is `\left\lfloor … \right\rfloor`; pasting reads that, bare
+  `\lfloor … \rfloor`, and `floor(…)` / `\operatorname{floor}(…)`. The registry keeps
+  their entries (MathML, MathJSON) with a `BRACKET_FUNCTIONS` table for the delimiters.
+- Not done: argument-count checks (e.g. `rem` with one argument).
 
 ### Rendering and caret notes (step 3)
 

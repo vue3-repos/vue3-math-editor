@@ -66,7 +66,16 @@ export interface RootAtom extends AtomBase {
   body: Row
 }
 
-export type GroupDelimiter = '(' | ')' | '|'
+// ( ) brackets, | | absolute value, ⌊ ⌋ floor, ⌈ ⌉ ceiling.
+export type GroupDelimiter = '(' | ')' | '|' | '⌊' | '⌋' | '⌈' | '⌉'
+
+// The closing delimiter for each opening one.
+export const CLOSING_DELIMITER: Record<string, GroupDelimiter> = {
+  '(': ')',
+  '|': '|',
+  '⌊': '⌋',
+  '⌈': '⌉',
+}
 
 export interface GroupAtom extends AtomBase {
   kind: 'group'
@@ -260,7 +269,8 @@ export function group(
   open: GroupDelimiter = '(',
   close?: GroupDelimiter,
 ): GroupAtom {
-  return { kind: 'group', id: newAtomId(), open, close: close ?? (open === '(' ? ')' : open), body }
+  const closing = close ?? CLOSING_DELIMITER[open] ?? open
+  return { kind: 'group', id: newAtomId(), open, close: closing, body }
 }
 
 export function derivative(expr: Row = [], variable: Row = []): DerivativeAtom {
