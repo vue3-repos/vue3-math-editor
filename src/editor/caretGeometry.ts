@@ -315,3 +315,27 @@ export function atomsBox(
     height: bounds.bottom - bounds.top + pad * 2,
   }
 }
+
+// The painted extent of a whole row (the part under a root, a numerator, an
+// exponent), relative to the container and padded: the box the editor tints
+// while the cursor is in that row. Wider than tall, so a caret at either end
+// of the row (drawn a pixel outside its atoms) is inside the tint.
+export function rowBox(
+  container: HTMLElement,
+  path: RowPath,
+  padX = 4,
+  padY = 2,
+): SelectionBox | null {
+  const el = rowElement(container, path)
+  const bounds = el ? paintedBounds(el) : null
+  if (!bounds) return null
+
+  const base = container.getBoundingClientRect()
+
+  return {
+    left: bounds.left - base.left + container.scrollLeft - padX,
+    top: bounds.top - base.top + container.scrollTop - padY,
+    width: bounds.right - bounds.left + padX * 2,
+    height: bounds.bottom - bounds.top + padY * 2,
+  }
+}

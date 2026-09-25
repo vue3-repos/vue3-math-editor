@@ -37,6 +37,10 @@ a denominator, and a root has a body and, for an nth root, an index.
 - **The caret always sits between two things.** It can be placed before or after every
   character and every structure, and inside every slot. The arrow keys visit each of
   those positions in reading order, including the very end of the equation.
+- **The slot the caret is in is tinted.** Inside a root, a numerator, an exponent or any
+  other slot, that slot has a faint blue background. At the end of `√(x+1)` the caret
+  looks almost the same inside the root and after it: with the tint it is still under
+  the root, and without it, after. At the top level of the equation there is no tint.
 - **The meaning is worked out from what's there.** Every time you change the equation,
   the editor re-reads it from scratch. Nothing about the meaning depends on the order in
   which you typed things, only on what is on the screen.
