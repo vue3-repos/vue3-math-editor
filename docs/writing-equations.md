@@ -37,6 +37,10 @@ a denominator, and a root has a body and, for an nth root, an index.
 - **The caret always sits between two things.** It can be placed before or after every
   character and every structure, and inside every slot. The arrow keys visit each of
   those positions in reading order, including the very end of the equation.
+- **The slot the caret is in is tinted.** Inside a root, a numerator, an exponent or any
+  other slot, that slot has a faint blue background. At the end of `√(x+1)` the caret
+  looks almost the same inside the root and after it: with the tint it is still under
+  the root, and without it, after. At the top level of the equation there is no tint.
 - **The meaning is worked out from what's there.** Every time you change the equation,
   the editor re-reads it from scratch. Nothing about the meaning depends on the order in
   which you typed things, only on what is on the screen.
@@ -69,8 +73,10 @@ number shows them ("0.25: mV"). They stay with the number:
 - Backspace at the end of the number deletes its digits; deleting the last digit (or
   the whole number) deletes the units too, so a new number starts without any. Selecting
   the number selects its units too, so deleting or copying it takes them along.
-- Units with a problem (an invalid name, or units the checker doesn't know) stay in view,
-  underlined, until they're fixed.
+- Units with an invalid name (not a CellML name) stay in view, underlined in red, until
+  they're fixed. A units problem the checker finds (units it doesn't know, or that don't
+  match) underlines the number only; its units stay hidden, and pointing at it says what
+  they are.
 
 The units go into Content MathML in CellML mode (`<cn cellml:units="mV">0.25</cn>`);
 numbers without units are written `cellml:units="dimensionless"`. Copied as LaTeX they are

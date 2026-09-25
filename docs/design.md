@@ -40,7 +40,11 @@ else drives where an edit lands.
      every sample equation.
 6. **The caret and selection are overlays.** Their positions come from the painted
    bounds of the atoms, which are tagged in KaTeX output via `\htmlData`, so neither ever
-   changes the KaTeX layout.
+   changes the KaTeX layout. So is the tint behind the row the cursor is in (any row but
+   the root, and not an empty one, whose placeholder is highlighted instead): it is the
+   row's painted bounds, wider than tall so a caret at either end is inside it. It tells
+   apart positions that are painted almost in the same place, such as the end of a root's
+   body and the gap after the root.
 
 ### Where things live
 
@@ -63,7 +67,7 @@ else drives where an edit lands.
 | `registry/nodes.ts` | The known functions: MathML tags, MathJSON names, LaTeX names |
 | `editor/clipboard.ts` | Copy, cut and paste; LaTeX in and out |
 | `editor/exports.ts` | "Copy as" and the output panels' Content MathML, including CellML mode |
-| `editor/caretGeometry.ts` | Caret, selection and mark boxes; click hit-testing |
+| `editor/caretGeometry.ts` | Caret, selection, mark and active-row boxes; click hit-testing |
 | `renderers/layoutLatex.ts` | Rows → tagged KaTeX LaTeX for the editing surface |
 | `renderers/mathjson.ts`, `renderers/mathml.ts` | `AstNode` → MathJSON, Content MathML |
 | `components/MathField.vue` | One editable equation: rendering, overlays, keyboard, mouse, clipboard events |
@@ -206,9 +210,9 @@ these notes cover how they are implemented.
     left without a number (or one being typed: `1e-` counts) straight away. The workbench
     applies it to every state it stores (`setEquation`); the unit tests' `press` does the
     same. A removal on a cursor move isn't an undo step.
-  - An issue that names a number by value underlines only its digits (`digitIds`), so the
-    units stay hidden; one that names units (undefined units) underlines them too, which
-    shows them.
+  - An issue that names a number, by value or by its units (undefined units), underlines
+    only its digits (`digitIds`), so the units stay hidden; the message says what they
+    are. Only a parse problem (an invalid units name) shows them.
 
 ### Conditions
 

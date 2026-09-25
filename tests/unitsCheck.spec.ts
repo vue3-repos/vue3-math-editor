@@ -230,7 +230,7 @@ describe('UnitsChecker', () => {
     // Numbers are underlined by their units.
     const root = type('x=a+2{furlong}').root
     const marks = unitsIssueMarks(root, issues)
-    expect(marks.map((m) => m.atomIds.length)).toEqual([1, 2, 1]) // x; 2 and its units; a
+    expect(marks.map((m) => m.atomIds.length)).toEqual([1, 1, 1]) // x; 2 (its units stay hidden); a
   })
 
   it('reports missing and undefined units together', () => {

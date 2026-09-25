@@ -134,12 +134,13 @@ export function unitsIssueMarks(root: Row, issues: readonly UnitsIssue[]): Mark[
         marks.push({ message: issue.message, atomIds, kind: 'units' })
       }
     }
-    // A number named by its units (undefined units, say) is underlined with
-    // its units, which the underline then reveals; by value, only the number.
+    // A number named by its units (undefined units, say) or by its value.
+    // Only its digits are underlined, so its units stay hidden: the message
+    // on hover says what they are.
     for (const number of numbers) {
-      if (!number.inherited && number.units !== null && issue.units?.includes(number.units)) {
-        marks.push({ message: issue.message, atomIds: number.atomIds, kind: 'units' })
-      } else if (issue.numbers?.includes(number.value)) {
+      const byUnits =
+        !number.inherited && number.units !== null && issue.units?.includes(number.units)
+      if (byUnits || issue.numbers?.includes(number.value)) {
         marks.push({ message: issue.message, atomIds: number.digitIds, kind: 'units' })
       }
     }

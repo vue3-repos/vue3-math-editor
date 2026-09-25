@@ -28,6 +28,7 @@ import {
   caretBox,
   hitTest,
   nearestOffset,
+  rowBox,
   selectionBox,
 } from '../editor/caretGeometry'
 import {
@@ -98,6 +99,10 @@ const focused = ref(false)
 const caretStyle = ref<Record<string, string> | null>(null)
 const caretInPlaceholder = ref(false)
 const selectionStyle = ref<Record<string, string> | null>(null)
+// The part of the equation the cursor is in (under a root, in a numerator,
+// an exponent), tinted so it's clear which level the caret is at: at the end
+// of √x the caret is either still under the root (tinted) or after it (not).
+const rowTintStyle = ref<Record<string, string> | null>(null)
 const markBoxes = ref<Array<{ box: SelectionBox; message: string; kind: MarkKind }>>([])
 // The mark under the pointer, positioned in client coordinates (the tooltip
 // is position: fixed so the field's horizontal scrolling doesn't clip it).
@@ -142,6 +147,8 @@ const showCaret = computed(
     !caretInPlaceholder.value,
 )
 
+const showRowTint = computed(() => props.active && focused.value && rowTintStyle.value !== null)
+
 const showSelection = computed(() => props.active && selectionStyle.value !== null)
 
 function updateOverlays() {
@@ -152,6 +159,22 @@ function updateOverlays() {
     ? { left: `${box.left}px`, top: `${box.top}px`, height: `${box.height}px` }
     : null
   caretInPlaceholder.value = box?.placeholder ?? false
+
+  // Not the whole equation, and not an empty row: its placeholder is
+  // highlighted already.
+  const path = props.cursor.path
+  const tint =
+    container && path.length > 0 && getRow(props.modelValue, path)?.length
+      ? rowBox(container, path)
+      : null
+  rowTintStyle.value = tint
+    ? {
+        left: `${tint.left}px`,
+        top: `${tint.top}px`,
+        width: `${tint.width}px`,
+        height: `${tint.height}px`,
+      }
+    : null
 
   const range = selection.value
   const area = container && range ? selectionBox(container, props.modelValue, range) : null
@@ -467,6 +490,7 @@ defineExpose({ focus: () => surfaceEl.value?.focus() })
     @focus="focused = true"
     @blur="focused = false"
   >
+    <div v-if="showRowTint" class="row-tint" data-role="active-row" :style="rowTintStyle!"></div>
     <div v-if="showSelection" class="selection" :style="selectionStyle!"></div>
     <template v-for="(mark, index) in markBoxes" :key="index">
       <div
@@ -521,6 +545,15 @@ defineExpose({ focus: () => surfaceEl.value?.focus() })
   z-index: 0;
   border-radius: 3px;
   background: rgba(148, 163, 184, 0.3);
+  pointer-events: none;
+}
+
+.row-tint {
+  position: absolute;
+  z-index: 0;
+  border-radius: 3px;
+  background: rgba(37, 99, 235, 0.07);
+  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.18);
   pointer-events: none;
 }
 

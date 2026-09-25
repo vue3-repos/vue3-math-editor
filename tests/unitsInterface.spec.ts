@@ -56,12 +56,12 @@ describe('unitsIssueMarks', () => {
     expect(marks[0].message).toContain('metre_per_second')
   })
 
-  it('underlines numbers by value (the number only), or by units (with its units)', () => {
+  it('underlines numbers by value or by units, the number only: its units stay hidden', () => {
     const root = typed('x=t+2{mV}+3')
     const [byValue] = unitsIssueMarks(root, [{ lineId: 'line-1', message: 'm', numbers: [2] }])
-    expect(byValue.atomIds).toHaveLength(1) // the digit: the hidden units stay hidden
+    expect(byValue.atomIds).toHaveLength(1) // the digit
     const [byUnits] = unitsIssueMarks(root, [{ lineId: 'line-1', message: 'm', units: ['mV'] }])
-    expect(byUnits.atomIds).toHaveLength(2) // the digit and its units atom, shown
+    expect(byUnits.atomIds).toEqual(byValue.atomIds)
   })
 
   it('underlines nothing for names that are not in the line', () => {

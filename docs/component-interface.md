@@ -90,8 +90,8 @@ Numbers are dimensionless unless the user gives them units, typed in braces stra
 the number: `0.25{mV}`, `1e-3{per_s}`. The units show (light blue) while being typed, then
 are hidden, leaving a very small light-blue triangle on the number: pointing at it shows
 them ("0.25: mV"), and they are always in the line's MathML.
-Units an issue names (`units` in a `UnitsIssue`) are shown, underlined; an issue naming a
-number by value underlines only the number. See [Writing equations](writing-equations.md).
+An issue naming numbers, by value or by their units (`numbers` or `units` in a
+`UnitsIssue`), underlines only the numbers; their units stay hidden. See [Writing equations](writing-equations.md).
 
 ## Connecting a units checker
 
