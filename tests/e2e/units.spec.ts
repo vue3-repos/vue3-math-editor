@@ -165,14 +165,16 @@ test('{ opens hidden units again to change them', async () => {
   expect((await lines())[0].mathml).toContain('<cn cellml:units="dimensionless">6</cn>')
 })
 
-test('units a problem is about stay in view', async () => {
+test('a units problem underlines the number, its units staying hidden', async () => {
   await wb.type('x=2{furlong}')
   await setUnits({
     issues: [
       { lineId: 'line-1', message: 'No units called furlong are defined', units: ['furlong'] },
     ],
   })
-  await expect(wb.line(0).locator('.me-units')).toHaveText('furlong')
+  await expect(unitsMarks()).toHaveCount(1)
+  await expect(wb.line(0).locator('.me-units')).toHaveCount(0)
+  await expect(wb.line(0).locator('.me-units-flag')).toHaveCount(1)
   await setUnits({ issues: [{ lineId: 'line-1', message: '2 is dimensionless', numbers: [2] }] })
   await expect(wb.line(0).locator('.me-units')).toHaveCount(0)
   await expect(unitsMarks()).toHaveCount(1)

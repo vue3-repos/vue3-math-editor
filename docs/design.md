@@ -206,9 +206,9 @@ these notes cover how they are implemented.
     left without a number (or one being typed: `1e-` counts) straight away. The workbench
     applies it to every state it stores (`setEquation`); the unit tests' `press` does the
     same. A removal on a cursor move isn't an undo step.
-  - An issue that names a number by value underlines only its digits (`digitIds`), so the
-    units stay hidden; one that names units (undefined units) underlines them too, which
-    shows them.
+  - An issue that names a number, by value or by its units (undefined units), underlines
+    only its digits (`digitIds`), so the units stay hidden; the message says what they
+    are. Only a parse problem (an invalid units name) shows them.
 
 ### Conditions
 
