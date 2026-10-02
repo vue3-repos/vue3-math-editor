@@ -31,7 +31,8 @@
 // - a fraction with italic d's, dV/dt: a derivative, or a fraction;
 // - an italic e raised to a power: Euler's number, or a variable e;
 // - an italic word as a name's superscript, g^{max}: part of the name, or
-//   a power;
+//   a power; the same for a name with a subscript, K_c^{Glc_o}, whose
+//   subscript is then one more superscript part (K_c__Glc__o);
 // - digits as a name's superscript, n^4 or κ_m^1: a power (but 1 is part of
 //   the name), or part of the name. Word writes every digit typed italic, so
 //   this is asked of each one;
@@ -417,6 +418,18 @@ const isNameText = (text: string) => {
 // separated: Ca,i.
 const isNameParts = (text: string) =>
   text.split(',').every((part) => part.length > 0 && Array.from(part).every(isNameCharacter))
+
+// A superscript that is a name with a subscript, Glc_o (K_c^{Glc_o}): its
+// text as parts, comma separated (Glc,o), else null. A name's scripts can't
+// nest, so the subscript is one more superscript part: K_c__Glc__o.
+function subscriptedNameText(sup: readonly MathNode[]): string | null {
+  const [only] = sup
+  if (sup.length !== 1 || only.kind !== 'scripts' || only.sup || !only.sub) return null
+  const base = textOf(only.base)
+  const sub = textOf(only.sub)
+  if (base === null || sub === null || !isNameText(base) || !isNameParts(sub)) return null
+  return `${base},${sub}`
+}
 
 const hasLetter = (text: string) =>
   Array.from(text).some((c) => /[A-Za-z]/.test(c) || !!greekName(c))
@@ -1736,6 +1749,37 @@ class Reader {
         atoms,
       )
       return false
+    }
+
+    // K_c^{Glc_o}: a name with a subscript, part of the name (K_c__Glc__o)
+    // if upright, and otherwise asked about, as a word is.
+    const nested = text === null ? subscriptedNameText(sup) : null
+    if (nested !== null) {
+      const scripts = sup[0] as MathNode & { kind: 'scripts' }
+      const named = () => [symbol('_'), symbol('_'), ...nameParts(nested, 2)]
+      if (isUpright(scripts.base) && isUpright(scripts.sub!)) {
+        atoms.push(...named())
+        return true
+      }
+      const base = atomsText(atoms)
+      const stored = atoms.map((atom) => (atom.kind === 'symbol' ? atom.value : '')).join('')
+      const written = linearText(sup)
+      const { chosen, became } = this.decide(
+        path,
+        'name-superscript',
+        'Part of the name, or a power?',
+        { latex: treeLatex([node]), text: linearText([node]) },
+        [
+          {
+            id: 'name',
+            label: `Part of the name: ${base} with the superscript ${written} (${stored}__${nested.replace(/,/g, '__')})`,
+          },
+          { id: 'power', label: `A power: ${base} to the power ${written}` },
+        ],
+      )
+      atoms.push(...(chosen === 'name' ? named() : [power()]))
+      became(atoms)
+      return chosen === 'name'
     }
 
     if (word && letters >= 2) {
