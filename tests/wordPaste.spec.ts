@@ -159,6 +159,31 @@ describe('Word equations (OMML in clipboard HTML)', () => {
       expect(only(sSup(r('x'), r('n')))).toBe('x^{n}')
     })
 
+    it('asks whether a name with a subscript, as a superscript, is part of the name', () => {
+      const k = (sub: string) => sSup(sSub(r('K'), r('c')), sSub(r('Glc'), r(sub)))
+      const reading = read(word(k('o')))
+      expect(lines(reading)).toEqual(['K_c__Glc__o'])
+      expect(kinds(reading)).toEqual(['name-superscript'])
+      expect(reading.assumptions[0].options.map((o) => o.label)).toEqual([
+        'Part of the name: K_c with the superscript Glc_o (K_c__Glc__o)',
+        'A power: K_c to the power Glc_o',
+      ])
+      expect(lines(read(word(k('o')), otherwise(reading)))).toEqual(['K_c^{Glc_o}'])
+
+      // K_c^{Glc_o}/K_c^{Glc_i} = 1: asked of each, the same whatever is chosen.
+      const html = word(`${f(k('o'), k('i'))}${r('=1')}`)
+      const both = read(html)
+      expect(lines(both)).toEqual(['[K_c__Glc__o/K_c__Glc__i]=1'])
+      expect(kinds(both)).toEqual(['name-superscript', 'name-superscript'])
+      const powers = read(html, otherwise(both))
+      expect(powers.assumptions.map((a) => a.id)).toEqual(both.assumptions.map((a) => a.id))
+
+      // Upright: part of the name, without asking.
+      const upright = read(word(sSup(sSub(r('K'), r('c')), sSub(r('Glc', 'p'), r('o', 'p')))))
+      expect(lines(upright)).toEqual(['K_c__Glc__o'])
+      expect(upright.assumptions).toEqual([])
+    })
+
     it('asks whether digits on a name are a power or part of it', () => {
       const html = word(sSubSup(r('x'), r('i'), r('2')))
       const reading = read(html)
@@ -717,6 +742,16 @@ describe('Presentation MathML', () => {
     expect(
       lines(readMathML('<msub><mrow><mo>[</mo><mi>Glc</mi><mo>]</mo></mrow><mi>i</mi></msub>')),
     ).toEqual(['Glc_conc_i'])
+  })
+
+  it('reads a name with a subscript, as a superscript, as part of the name', () => {
+    expect(
+      lines(
+        readMathML(
+          '<msup><msub><mi>K</mi><mi>c</mi></msub><msub><mi>Glc</mi><mi>o</mi></msub></msup>',
+        ),
+      ),
+    ).toEqual(['K_c__Glc__o'])
   })
 
   it('reads full stops and decimal points by their tokens', () => {
