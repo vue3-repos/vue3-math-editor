@@ -521,7 +521,7 @@ Checking starts once a units file is loaded or a variable has units. In the demo
 | Click | Put the caret at the nearest position. A click on a fraction bar goes before or after the whole fraction. |
 | Space | Step out of the fraction, exponent or bracket the caret is in |
 | Tab / Shift+Tab | Next / previous empty slot |
-| Backspace | Delete the thing before the caret. Next to a fraction or other structure, the first press steps inside it rather than deleting everything; an empty structure goes in one press. At the start of a structure's first slot, it removes the structure but keeps its contents; in a later slot, it moves back to the end of the previous one. |
+| Backspace | Delete the thing before the caret. Next to a fraction or other structure, the first press steps inside it rather than deleting everything; an empty structure goes in one press. At the start of a structure's first slot, it removes the structure but keeps its contents. In an empty denominator, it removes the fraction and leaves the numerator, so `x/` then Backspace gives back `x` (a numerator such as `x+1` gets its brackets back). In any other later slot, it moves back to the end of the previous one. |
 | Delete | The same, forwards |
 | Enter | Start a new equation line |
 | Alt+↑ / Alt+↓ (Option on a Mac) | Move the equation line up / down. You can also drag a line by its number. |

@@ -17,6 +17,7 @@ import { type Cursor, allPositions, cursorAtStart, cursorsEqual } from './cursor
 import {
   type Atom,
   type BranchName,
+  type FractionAtom,
   type GroupDelimiter,
   type PiecewiseAtom,
   type Row,
@@ -650,6 +651,23 @@ export const exitStructure: Command = (state) => {
 // Deleting
 // ---------------------------------------------------------------------------
 
+interface FractionOwner extends Owner {
+  atom: FractionAtom
+}
+
+// Backspace in an empty denominator undoes "/": the fraction goes and its
+// numerator is left in the row, cursor after it. A numerator with an operator
+// at its top level gets its brackets back, as "(x+1)/" dropped them and
+// "2(x+1)" must not become "2x+1".
+function dissolveFraction(state: EditorState, owner: FractionOwner): EditorState {
+  const { num } = owner.atom
+  const content = num.some(isOperator) ? [group(num, '(')] : num
+  return splice(state, owner.rowPath, owner.index, 1, content, {
+    path: owner.rowPath,
+    offset: owner.index + content.length,
+  })
+}
+
 // Backspace.
 // - After a number's (hidden) units: the number's last digit (with the last
 //   one, the units go too).
@@ -659,8 +677,10 @@ export const exitStructure: Command = (state) => {
 // - After a structure: step into it (its last row, at the end) — or delete it
 //   if all its rows are empty.
 // - At the start of a row inside a structure: delete the structure if it is
-//   empty; from a later row, move to the end of the previous row; from the
-//   first row, remove the structure but keep its content ("(x+1" -> "x+1").
+//   empty; in an empty denominator, remove the fraction and keep the
+//   numerator (bracketed if it needs it); from a later row, move to the end
+//   of the previous row; from the first row, remove the structure but keep
+//   its content ("(x+1" -> "x+1").
 // - At the start of the equation: nothing (returns the same state).
 export const deleteBackward: Command = (state) => {
   if (selectionOf(state)) return clearSelection(state)
@@ -717,6 +737,10 @@ export const deleteBackward: Command = (state) => {
       path: owner.rowPath,
       offset: owner.index,
     })
+  }
+
+  if (owner.atom.kind === 'fraction' && owner.branch === 'den' && owner.atom.den.length === 0) {
+    return dissolveFraction(state, owner as FractionOwner)
   }
 
   const rows = childRows(owner.atom)

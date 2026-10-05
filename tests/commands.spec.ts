@@ -201,7 +201,20 @@ describe('Backspace', () => {
   })
 
   it('from the start of a later row, moves to the end of the previous row', () => {
-    expect(show(type('1/x', 'Backspace', 'Backspace'))).toBe('[1‸/]')
+    expect(show(type('1/x', 'ArrowLeft', 'Backspace'))).toBe('[1‸/x]')
+  })
+
+  it('in an empty denominator, removes the fraction and keeps the numerator', () => {
+    expect(show(type('2x/', 'Backspace'))).toBe('2x‸')
+    expect(show(type('y=1/x', 'Backspace', 'Backspace'))).toBe('y=1‸')
+    expect(json(type('2x/', 'Backspace'))).toEqual(['Multiply', 2, 'x'])
+  })
+
+  it('in an empty denominator, gives a numerator with an operator its brackets back', () => {
+    const state = type('2*(x+1)/', 'Backspace')
+    expect(show(state)).toBe(show(type('2*(x+1)')))
+    expect(json(state)).toEqual(json(type('2*(x+1)')))
+    expect(show(type('y=(x)/', 'Backspace'))).toBe('y=x‸')
   })
 
   it('from the start of the first row, removes the structure but keeps the content', () => {
