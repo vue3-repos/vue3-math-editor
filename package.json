@@ -1,6 +1,6 @@
 {
   "name": "vue3-math-editor",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "A semantic equation editor for Vue 3: WYSIWYG equations rendered with KaTeX, exported as Content MathML (CellML-ready), MathJSON and LaTeX.",
   "keywords": [
     "vue",
