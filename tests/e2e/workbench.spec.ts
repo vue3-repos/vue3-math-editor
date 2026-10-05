@@ -68,9 +68,16 @@ test.describe('editing in place', () => {
     await wb.expectMathJson(['Divide', 1, 3])
     await wb.press('Backspace') // into the denominator
     await expect(wb.cursor()).toHaveText('0.den @ 1')
-    await wb.press('Backspace', 3) // "3", then to the numerator, then "1"
-    await wb.press('Backspace') // the now-empty fraction
+    await wb.press('Backspace', 2) // "3", then the empty denominator takes the fraction away
+    await expect(wb.cursor()).toHaveText('root @ 1')
+    await wb.expectMathJson(1)
+    await wb.press('Backspace') // "1"
     await expect.poll(() => wb.mathJson()).toBeNull()
+
+    await wb.type('1/3')
+    await wb.press('ArrowLeft')
+    await wb.press('Backspace') // from a denominator with content: to the numerator
+    await expect(wb.cursor()).toHaveText('0.num @ 1')
   })
 
   test('Delete removes the symbol after the cursor', async () => {

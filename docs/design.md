@@ -416,7 +416,7 @@ grouping).
 | `\|` | Closes the absolute value the cursor is directly inside, otherwise opens one. |
 | Space | Steps out of the innermost structure. |
 | Enter | Inside a piecewise, a new piece below; otherwise unused (the workbench adds a line). |
-| Backspace | Deletes the symbol before the cursor. After a structure it steps into it (or deletes it if empty). At the start of a later row it moves to the previous row; at the start of the first row it removes the structure but keeps its content (a piecewise is stepped out of instead). In an empty piece or otherwise, removes it. |
+| Backspace | Deletes the symbol before the cursor. After a structure it steps into it (or deletes it if empty). In an empty denominator it removes the fraction and keeps the numerator, in brackets if it has an operator at its top level (undoing `/`). At the start of any other later row it moves to the previous row; at the start of the first row it removes the structure but keeps its content (a piecewise is stepped out of instead). In an empty piece or otherwise, removes it. |
 | Delete | The mirror image of Backspace. |
 | Tab / Shift+Tab | Next / previous empty slot, wrapping. |
 | `\name` | Command mode (workbench): `frac sqrt root abs dd pow cases otherwise floor ceil bar hat tilde check conc`, the comparison and logic commands, the constants, function names (inserted with brackets), Greek letters; any other name is typed out as letters. |
