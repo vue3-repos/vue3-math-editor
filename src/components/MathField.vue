@@ -694,6 +694,14 @@ defineExpose({ focus: () => surfaceEl.value?.focus(), caretRect })
   background: color-mix(in srgb, var(--mark-color) 10%, transparent);
 }
 
+/* KaTeX draws a stack reaching below the baseline (a fraction) with an empty
+   strut over whatever lies there, and a root's surd over its radicand. Let a
+   click through both to the atom drawn beneath (atomAt reads the target). */
+.math-field :deep(.vlist-t2 > .vlist-r:nth-child(2) > .vlist),
+.math-field :deep(.hide-tail) {
+  pointer-events: none;
+}
+
 /* A number's units, while shown: upright and light blue after it. */
 .math-field :deep(.me-units) {
   color: var(--mf-units);
